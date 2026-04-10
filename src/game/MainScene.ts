@@ -163,7 +163,7 @@ export default class MainScene extends Phaser.Scene {
         const shelf = child as Phaser.Physics.Arcade.Sprite
         const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, shelf.x, shelf.y)
         if (dist < 70) {
-          store.placeItemOnShelf(shelf.getData('id'))
+          store.openShelfManagement(shelf.getData('id'))
         }
       })
     }
@@ -171,12 +171,14 @@ export default class MainScene extends Phaser.Scene {
     // Cập nhật Text báo hiệu đồ trên kệ liên tục từ Store Pinia
     const store = useGameStore()
     for (const [id, textObj] of Object.entries(this.shelfTexts)) {
-       const shelfItem = store.shelves[id as 'shelf1' | 'shelf2']
-       if (shelfItem && shelfItem.quantity > 0) {
-         const cardInfo = store.allCards.find(c => c.id === shelfItem.cardId)
-         textObj.setText(`🔖 ${cardInfo?.name}: ${shelfItem.quantity}`)
-       } else {
-         textObj.setText('🪹 Empty')
+       const shelfData = store.placedShelves[id as 'shelf1' | 'shelf2']
+       if (shelfData) {
+         const filledCount = shelfData.slots.filter(s => s.cardId !== null).length
+         if (filledCount > 0) {
+           textObj.setText(`🏷️ Hàng: ${filledCount}/${shelfData.slots.length}`)
+         } else {
+           textObj.setText('🪹 Trống')
+         }
        }
     }
 
@@ -258,8 +260,8 @@ export default class MainScene extends Phaser.Scene {
             const store = useGameStore()
             let foundShelfId: 'shelf1'|'shelf2'|null = null
             // Check if shelf 1 or shelf 2 has items
-            if (store.shelves.shelf1 && store.shelves.shelf1.quantity > 0) foundShelfId = 'shelf1'
-            else if (store.shelves.shelf2 && store.shelves.shelf2.quantity > 0) foundShelfId = 'shelf2'
+            if (store.placedShelves.shelf1 && store.placedShelves.shelf1.slots.some(s => s.cardId !== null)) foundShelfId = 'shelf1'
+            else if (store.placedShelves.shelf2 && store.placedShelves.shelf2.slots.some(s => s.cardId !== null)) foundShelfId = 'shelf2'
 
             if (foundShelfId) {
               customer.state = 'SEEK_ITEM'
@@ -286,11 +288,14 @@ export default class MainScene extends Phaser.Scene {
           if (time > customer.timer) {
             const store = useGameStore()
             const shelfIdToTake = customer.targetX === 200 ? 'shelf1' : 'shelf2'
-            const cardId = store.npcTakeItemFromShelf(shelfIdToTake)
+            const itemId = store.npcTakeItemFromSlot(shelfIdToTake)
             
-            if (cardId) {
-              const cardData = store.allCards.find(c => c.id === cardId)
-              customer.targetPrice = cardData ? cardData.marketPrice : 5
+            if (itemId) {
+              const itemData = store.shopItems[itemId]
+              customer.targetPrice = itemData ? itemData.sellPrice : 15
+              
+              const popup = this.add.text(sprite.x, sprite.y - 40, '+1 Pack 🎁', { fontSize: '12px', color: '#00ff00', fontStyle: 'bold' }).setOrigin(0.5)
+              this.tweens.add({ targets: popup, y: popup.y - 30, alpha: 0, duration: 1500, onComplete: () => popup.destroy() })
 
               customer.state = 'GO_CASHIER'
               useGameStore().addWaitingCustomer(customer.targetPrice)

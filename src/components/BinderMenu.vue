@@ -5,12 +5,12 @@ import { useGameStore } from '../stores/gameStore'
 const gameStore = useGameStore()
 
 const binderItems = computed(() => {
-  return Object.keys(gameStore.binder).map(cardId => {
+  return Object.keys(gameStore.personalBinder).map(cardId => {
     const cardData = gameStore.allCards.find(c => c.id === cardId)
     return {
       id: cardId,
       card: cardData,
-      quantity: gameStore.binder[cardId]
+      quantity: gameStore.personalBinder[cardId]
     }
   }).filter(item => item.card !== undefined)
 })
@@ -85,9 +85,7 @@ const binderItems = computed(() => {
 
           <!-- Tooltip / Action Overlay -->
           <div class="absolute inset-0 bg-black/80 backdrop-blur-sm rounded flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
-            <button @click="gameStore.moveToInventory(item.id)" class="bg-white hover:bg-gray-200 text-gray-900 font-bold py-2 px-4 rounded-lg shadow uppercase text-xs">
-              Đem đi bán
-            </button>
+            <div class="text-white font-bold text-sm">Chỉ trưng bày</div>
           </div>
           
           <!-- Holo Effect Overlay for Rare -->

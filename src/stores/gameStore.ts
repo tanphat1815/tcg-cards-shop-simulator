@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import cardsData from '../assets/data/cards.json'
+import { getRequiredExp, XP_REWARDS } from '../config/leveling'
 
 export interface CardData {
   id: string
@@ -11,37 +12,48 @@ export interface CardData {
   imageKey: string
 }
 
-export interface ShelfItem {
-  cardId: string;
-  quantity: number;
+export interface ShelfSlot {
+  cardId: string | null;
+}
+
+export interface ShelfData {
+  id: string;
+  slots: ShelfSlot[]; // 48 slots
 }
 
 export const useGameStore = defineStore('game', {
   state: () => ({
     money: 1000,
-    inventory: {} as Record<string, number>, // cardId -> quantity
-    binder: {} as Record<string, number>, // cardId -> quantity
-    shelves: {
-      shelf1: null as ShelfItem | null,
-      shelf2: null as ShelfItem | null
-    },
+    shopInventory: {} as Record<string, number>, // itemId -> quantity
+    personalBinder: {} as Record<string, number>, // cardId -> quantity
+    placedShelves: {
+      shelf1: { id: 'shelf1', slots: Array(48).fill(null).map(() => ({ cardId: null })) } as ShelfData,
+      shelf2: { id: 'shelf2', slots: Array(48).fill(null).map(() => ({ cardId: null })) } as ShelfData
+    } as Record<string, ShelfData>,
+    activeShelfId: null as string | null,
+    showShelfMenu: false,
     shopState: 'CLOSED' as 'OPEN' | 'CLOSED',
     waitingCustomers: 0,
     waitingQueue: [] as number[],
     isOpeningPack: false,
     currentPack: [] as CardData[],
     allCards: cardsData as CardData[],
-    // Day cycle
-    currentDay: 1,
-    timeInMinutes: 480, // 8:00 AM
-    showEndDayModal: false,
-    showBinderMenu: false,
+    shopItems: {
+      'basic_pack': { id: 'basic_pack', name: 'Booster Pack Thường', buyPrice: 10, sellPrice: 15, isPack: true }
+    } as Record<string, { id: string, name: string, buyPrice: number, sellPrice: number, isPack: boolean }>,
+    // Leveling
+    level: 1,
+    currentExp: 0,
+    showLevelUpNext: false,
     dailyStats: {
       revenue: 0,
       customersServed: 0,
       itemsSold: 0
     }
   }),
+  getters: {
+    requiredExp: (state) => getRequiredExp(state.level),
+  },
   actions: {
     loadSave() {
       const saved = localStorage.getItem('tcg-shop-save')
@@ -49,12 +61,16 @@ export const useGameStore = defineStore('game', {
         try {
           const parsed = JSON.parse(saved)
           this.money = parsed.money ?? 1000
-          this.inventory = parsed.inventory ?? {}
-          this.binder = parsed.binder ?? {}
-          this.shelves = parsed.shelves ?? { shelf1: null, shelf2: null }
+          this.shopInventory = parsed.shopInventory ?? {}
+          this.personalBinder = parsed.personalBinder ?? {}
+          if (parsed.placedShelves) {
+            this.placedShelves = parsed.placedShelves;
+          }
           this.currentDay = parsed.currentDay ?? 1
           this.timeInMinutes = parsed.timeInMinutes ?? 480
           this.shopState = parsed.shopState ?? 'OPEN'
+          this.level = parsed.level ?? 1
+          this.currentExp = parsed.currentExp ?? 0
         } catch (e) {
           console.error("Lỗi khi đọc file save", e)
         }
@@ -82,58 +98,111 @@ export const useGameStore = defineStore('game', {
         this.waitingCustomers--
         const price = this.waitingQueue.shift() || 0
         this.addMoney(price)
-        // Cập nhật stats
         this.dailyStats.customersServed++
         this.dailyStats.revenue += price
+        
+        // XP Reward: 5 XP per Pack (we only have packs for now)
+        this.gainExp(XP_REWARDS.SELL_PACK)
       }
     },
-    placeItemOnShelf(shelfId: 'shelf1' | 'shelf2') {
-      const availableCardIds = Object.keys(this.inventory)
-      if (availableCardIds.length === 0) return
+    openShelfManagement(shelfId: string) {
+      if (!this.placedShelves[shelfId]) return
+      this.activeShelfId = shelfId
+      this.showShelfMenu = true
+    },
+    closeShelfManagement() {
+      this.activeShelfId = null
+      this.showShelfMenu = false
+    },
+    moveToShelfSlot(itemId: string, slotIndex: number) {
+      if (!this.activeShelfId) return
+      const shelf = this.placedShelves[this.activeShelfId]
+      if (!shelf) return
 
-      const currentShelf = this.shelves[shelfId]
-      let cardToPlace = ''
-      
-      if (currentShelf && this.inventory[currentShelf.cardId]) {
-        cardToPlace = currentShelf.cardId
-      } else if (!currentShelf || currentShelf.quantity === 0) {
-        cardToPlace = availableCardIds[0]
-      } else {
-        return
+      const existingItem = shelf.slots[slotIndex].cardId
+      if (existingItem) {
+        if (!this.shopInventory[existingItem]) this.shopInventory[existingItem] = 0
+        this.shopInventory[existingItem]++
       }
 
-      this.inventory[cardToPlace]--
-      if (this.inventory[cardToPlace] === 0) {
-        delete this.inventory[cardToPlace]
-      }
-      
-      if (currentShelf && currentShelf.cardId === cardToPlace) {
-        currentShelf.quantity++
+      if (this.shopInventory[itemId] > 0) {
+        this.shopInventory[itemId]--
+        if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
+        shelf.slots[slotIndex].cardId = itemId
       } else {
-        this.shelves[shelfId] = { cardId: cardToPlace, quantity: 1 }
+        shelf.slots[slotIndex].cardId = null
       }
     },
-    npcTakeItemFromShelf(shelfId: 'shelf1' | 'shelf2') {
-      const shelf = this.shelves[shelfId]
-      if (shelf && shelf.quantity > 0) {
-        const cardId = shelf.cardId
-        shelf.quantity--
-        if (shelf.quantity === 0) {
-          this.shelves[shelfId] = null
+    clearShelfSlot(shelfId: string, slotIndex: number) {
+      const shelf = this.placedShelves[shelfId]
+      if (!shelf) return
+      
+      const itemId = shelf.slots[slotIndex].cardId
+      if (itemId) {
+        shelf.slots[slotIndex].cardId = null
+        if (!this.shopInventory[itemId]) this.shopInventory[itemId] = 0
+        this.shopInventory[itemId]++
+      }
+    },
+    autoFillShelf(itemId: string) {
+      if (!this.activeShelfId) return
+      const shelf = this.placedShelves[this.activeShelfId]
+      if (!shelf) return
+      
+      for (let i = 0; i < shelf.slots.length; i++) {
+        if (this.shopInventory[itemId] > 0 && shelf.slots[i].cardId === null) {
+          this.shopInventory[itemId]--
+          if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
+          shelf.slots[i].cardId = itemId
         }
+      }
+    },
+    clearEntireShelf() {
+      if (!this.activeShelfId) return
+      const shelf = this.placedShelves[this.activeShelfId]
+      if (!shelf) return
+      
+      for (let i = 0; i < shelf.slots.length; i++) {
+        const itemId = shelf.slots[i].cardId
+        if (itemId) {
+          shelf.slots[i].cardId = null
+          if (!this.shopInventory[itemId]) this.shopInventory[itemId] = 0
+          this.shopInventory[itemId]++
+        }
+      }
+    },
+    npcTakeItemFromSlot(shelfId: string) {
+      const shelf = this.placedShelves[shelfId]
+      if (!shelf) return null
+      
+      const filledSlots = shelf.slots.map((s, idx) => ({ s, idx })).filter(item => item.s.cardId !== null)
+      if (filledSlots.length > 0) {
+        const randIndex = Math.floor(Math.random() * filledSlots.length)
+        const slot = filledSlots[randIndex]
+        const itemId = slot.s.cardId
+        shelf.slots[slot.idx].cardId = null
         this.dailyStats.itemsSold++
-        return cardId
+        return itemId
       }
       return null
     },
-    openPack() {
+    buyPackToInventory() {
       const PACK_PRICE = 10
       if (this.money < PACK_PRICE) {
-        alert("Không đủ tiền mua Pack!")
-        return []
+        alert("Không đủ tiền nhập Pack!")
+        return
       }
       this.spendMoney(PACK_PRICE)
+      if (!this.shopInventory['basic_pack']) this.shopInventory['basic_pack'] = 0
+      this.shopInventory['basic_pack']++
+    },
+    tearPack(packId: string) {
+      if (!this.shopInventory[packId] || this.shopInventory[packId] <= 0) return
       
+      // Consume 1 pack
+      this.shopInventory[packId]--
+      if (this.shopInventory[packId] === 0) delete this.shopInventory[packId]
+
       const pulledCards: CardData[] = []
       for (let i = 0; i < 5; i++) {
         const rand = Math.random() * 100
@@ -147,14 +216,30 @@ export const useGameStore = defineStore('game', {
         
         pulledCards.push(randomCard)
         
-        if (!this.inventory[randomCard.id]) {
-          this.inventory[randomCard.id] = 0
+        // Add single cards directly to personal binder
+        if (!this.personalBinder[randomCard.id]) {
+          this.personalBinder[randomCard.id] = 0
         }
-        this.inventory[randomCard.id]++
+        this.personalBinder[randomCard.id]++
+
+        // XP Reward from opening
+        if (randomCard.rarity === 'Rare') this.gainExp(XP_REWARDS.OPEN_PACK_RARE)
+        else if (randomCard.rarity === 'Uncommon') this.gainExp(XP_REWARDS.OPEN_PACK_UNCOMMON)
+        else this.gainExp(XP_REWARDS.OPEN_PACK_COMMON)
       }
       this.currentPack = pulledCards
       this.isOpeningPack = true
-      return pulledCards
+    },
+    gainExp(amount: number) {
+      this.currentExp += amount
+      const req = getRequiredExp(this.level)
+      if (this.currentExp >= req) {
+        this.level++
+        this.currentExp = this.currentExp - req
+        this.showLevelUpNext = true
+        // If still over, recurse
+        this.gainExp(0)
+      }
     },
     closePackOpening() {
       this.isOpeningPack = false
@@ -163,7 +248,6 @@ export const useGameStore = defineStore('game', {
     tickTime(minutes: number) {
       if (this.shopState === 'OPEN') {
         this.timeInMinutes += minutes
-        // 8:00 PM = 20 * 60 = 1200
         if (this.timeInMinutes >= 1200) {
           this.timeInMinutes = 1200
           this.shopState = 'CLOSED'
@@ -176,24 +260,6 @@ export const useGameStore = defineStore('game', {
       this.shopState = 'OPEN'
       this.showEndDayModal = false
       this.dailyStats = { revenue: 0, customersServed: 0, itemsSold: 0 }
-    },
-    moveToBinder(cardId: string) {
-      if (this.inventory[cardId] > 0) {
-        this.inventory[cardId]--
-        if (this.inventory[cardId] === 0) delete this.inventory[cardId]
-        
-        if (!this.binder[cardId]) this.binder[cardId] = 0
-        this.binder[cardId]++
-      }
-    },
-    moveToInventory(cardId: string) {
-      if (this.binder[cardId] > 0) {
-        this.binder[cardId]--
-        if (this.binder[cardId] === 0) delete this.binder[cardId]
-        
-        if (!this.inventory[cardId]) this.inventory[cardId] = 0
-        this.inventory[cardId]++
-      }
     }
   }
 })

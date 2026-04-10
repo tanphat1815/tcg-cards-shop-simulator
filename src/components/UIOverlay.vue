@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, watch, ref } from 'vue'
 import { useGameStore } from '../stores/gameStore'
 
 const gameStore = useGameStore()
@@ -28,19 +28,30 @@ const formattedTime = computed(() => {
   return `${displayHours.toString().padStart(2, '0')}:${remainingMins.toString().padStart(2, '0')} ${ampm}`
 })
 
-const handleOpenPack = () => {
-  gameStore.openPack()
+const handleBuyPack = () => {
+  gameStore.buyPackToInventory()
 }
 
-// Transform the inventory Record into an array for rendering
+// Level Up Toast
+const showLevelUpToast = ref(false)
+watch(() => gameStore.level, (newVal, oldVal) => {
+  if (newVal > oldVal) {
+    showLevelUpToast.value = true
+    setTimeout(() => {
+      showLevelUpToast.value = false
+    }, 4000)
+  }
+})
+
+// Transform the shopInventory Record into an array for rendering
 const inventoryDetails = computed(() => {
-  return Object.keys(gameStore.inventory).map(cardId => {
-    const cardData = gameStore.allCards.find(c => c.id === cardId)
+  return Object.keys(gameStore.shopInventory).map(itemId => {
+    const itemData = gameStore.shopItems[itemId]
     return {
-      id: cardId,
-      name: cardData?.name || 'Unknown',
-      quantity: gameStore.inventory[cardId],
-      rarity: cardData?.rarity || 'Unknown'
+      id: itemId,
+      name: itemData?.name || 'Unknown Item',
+      quantity: gameStore.shopInventory[itemId],
+      isPack: itemData?.isPack || false
     }
   }).sort((a, b) => b.quantity - a.quantity)
 })
@@ -64,16 +75,30 @@ const inventoryDetails = computed(() => {
     <!-- Top-left: Balance & Stats -->
     <div class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-sm">
       <h2 class="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent mb-3">Shop Manager</h2>
-      <div class="flex items-center justify-between mb-5 bg-gray-800/80 px-4 py-3 rounded-xl border border-gray-700/50">
+      <div class="flex items-center justify-between mb-4 bg-gray-800/80 px-4 py-3 rounded-xl border border-gray-700/50">
         <span class="text-sm font-medium text-gray-300">Balance</span>
         <span class="text-2xl font-black text-yellow-500">${{ gameStore.money.toFixed(2) }}</span>
       </div>
+
+      <!-- Level & XP Bar -->
+      <div class="mb-5">
+        <div class="flex justify-between items-end mb-1">
+          <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Level {{ gameStore.level }}</span>
+          <span class="text-[10px] font-mono text-gray-500">{{ gameStore.currentExp }} / {{ gameStore.requiredExp }} XP</span>
+        </div>
+        <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700/50">
+          <div 
+            class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-500 ease-out"
+            :style="{ width: `${(gameStore.currentExp / gameStore.requiredExp) * 100}%` }"
+          ></div>
+        </div>
+      </div>
       
       <button 
-        @click="handleOpenPack" 
+        @click="handleBuyPack" 
         class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-indigo-500/30 transform hover:-translate-y-0.5"
       >
-        Mở Booster Pack ($10)
+        Nhập 1 Booster Pack ($10)
       </button>
 
       <!-- Khách đợi thanh toán -->
@@ -106,15 +131,14 @@ const inventoryDetails = computed(() => {
           class="flex justify-between items-center bg-gray-800/60 p-3 rounded-xl border border-gray-700/30 hover:bg-gray-700/50 transition-colors"
         >
           <div class="flex flex-col">
-            <span class="font-bold text-[15px]" :class="{
-              'text-gray-300': item.rarity === 'Common',
-              'text-blue-400': item.rarity === 'Uncommon',
-              'text-yellow-400 font-extrabold': item.rarity === 'Rare',
-            }">{{ item.name }}</span>
-            <span class="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">{{ item.rarity }}</span>
+            <span class="font-bold text-[15px] text-gray-200 flex items-center gap-2">
+              <span v-if="item.isPack">🎁</span> {{ item.name }}
+            </span>
           </div>
           <div class="flex items-center gap-3">
-            <button @click="gameStore.moveToBinder(item.id)" title="Cất vào Sổ Sưu Tầm" class="hover:scale-125 transition-transform text-lg opacity-60 hover:opacity-100">📔</button>
+            <button v-if="item.isPack" @click="gameStore.tearPack(item.id)" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-1 px-3 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">
+              Xé Pack
+            </button>
             <div class="bg-gray-900 text-gray-200 px-3 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold w-12 text-center">
               x{{ item.quantity }}
             </div>
@@ -122,10 +146,37 @@ const inventoryDetails = computed(() => {
         </div>
       </div>
     </div>
+
+    <!-- Level Up Notification Overlay -->
+    <Transition name="level-up">
+      <div v-if="showLevelUpToast" class="absolute top-32 left-1/2 -translate-x-1/2 z-[200] pointer-events-none">
+        <div class="bg-gradient-to-r from-yellow-400 via-orange-500 to-yellow-400 p-1 rounded-2xl shadow-[0_0_50px_rgba(245,158,11,0.5)] animate-bounce">
+          <div class="bg-gray-900 px-10 py-4 rounded-xl flex flex-col items-center">
+            <span class="text-4xl mb-2">🎉</span>
+            <h2 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-yellow-500 uppercase tracking-tighter">LEVEL UP!</h2>
+            <p class="text-white font-bold">Bạn đã đạt Cấp {{ gameStore.level }}</p>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
 <style scoped>
+/* Level Up Animation */
+.level-up-enter-active,
+.level-up-leave-active {
+  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.level-up-enter-from {
+  opacity: 0;
+  transform: translate(-50%, -100%) scale(0.5);
+}
+.level-up-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -150%) scale(0.8);
+}
+
 /* Custom scrollbar for better visual */
 .custom-scroll::-webkit-scrollbar {
   width: 6px;

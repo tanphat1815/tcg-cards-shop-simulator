@@ -5,6 +5,7 @@ import UIOverlay from './components/UIOverlay.vue'
 import PackOpeningOverlay from './components/PackOpeningOverlay.vue'
 import EndOfDayModal from './components/EndOfDayModal.vue'
 import BinderMenu from './components/BinderMenu.vue'
+import ShelfManagementMenu from './components/ShelfManagementMenu.vue'
 import { useGameStore } from './stores/gameStore'
 
 const store = useGameStore()
@@ -15,12 +16,14 @@ onMounted(() => {
   store.$subscribe((mutation, state) => {
     localStorage.setItem('tcg-shop-save', JSON.stringify({
       money: state.money,
-      inventory: state.inventory,
-      binder: state.binder,
-      shelves: state.shelves,
+      shopInventory: state.shopInventory,
+      personalBinder: state.personalBinder,
+      placedShelves: state.placedShelves,
       currentDay: state.currentDay,
       timeInMinutes: state.timeInMinutes,
-      shopState: state.shopState
+      shopState: state.shopState,
+      level: state.level,
+      currentExp: state.currentExp
     }))
   }, { deep: true })
 })
@@ -33,5 +36,6 @@ onMounted(() => {
     <PackOpeningOverlay />
     <EndOfDayModal />
     <BinderMenu />
+    <ShelfManagementMenu />
   </div>
 </template>
