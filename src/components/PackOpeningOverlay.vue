@@ -1,19 +1,169 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useGameStore } from '../stores/gameStore'
 
 const gameStore = useGameStore()
 const flipped = ref<boolean[]>([false, false, false, false, false])
+const particleCanvas = ref<HTMLCanvasElement | null>(null)
 
-// Reset flipped state when a new pack is opened
+// --- Audio System ---
+const initAudio = () => {
+  const AudioContext = window.AudioContext || (window as any).webkitAudioContext
+  if (!AudioContext) return null
+  return new AudioContext()
+}
+
+const playTearSound = () => {
+  const ctx = initAudio()
+  if (!ctx || ctx.state === 'suspended') return
+  const bufferSize = ctx.sampleRate * 0.4
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1
+  const noise = ctx.createBufferSource()
+  noise.buffer = buffer
+  
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'bandpass'
+  filter.frequency.setValueAtTime(500, ctx.currentTime)
+  filter.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.2)
+  
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.5, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
+  
+  noise.connect(filter)
+  filter.connect(gain)
+  gain.connect(ctx.destination)
+  noise.start()
+  noise.stop(ctx.currentTime + 0.4)
+}
+
+const playFlipSound = () => {
+  const ctx = initAudio()
+  if (!ctx || ctx.state === 'suspended') return
+  const osc = ctx.createOscillator()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(200, ctx.currentTime)
+  osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1)
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.1, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1)
+  osc.connect(gain)
+  gain.connect(ctx.destination)
+  osc.start()
+  osc.stop(ctx.currentTime + 0.1)
+}
+
+const playRareSound = () => {
+  const ctx = initAudio()
+  if (!ctx || ctx.state === 'suspended') return
+  const osc = ctx.createOscillator()
+  osc.type = 'triangle'
+  osc.frequency.setValueAtTime(800, ctx.currentTime)
+  osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.15)
+  osc.frequency.setValueAtTime(2400, ctx.currentTime + 0.3)
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.2, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8)
+  osc.connect(gain)
+  gain.connect(ctx.destination)
+  osc.start()
+  osc.stop(ctx.currentTime + 0.8)
+}
+
+// --- Particle System ---
+let particles: { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; size: number; color: string }[] = []
+let animationFrameId = 0
+
+const emitParticles = (x: number, y: number, color: string, count: number = 30) => {
+  for(let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const speed = Math.random() * 12 + 4
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0,
+      maxLife: Math.random() * 40 + 20,
+      size: Math.random() * 6 + 3,
+      color: Math.random() > 0.4 ? color : '#ffffff'
+    })
+  }
+}
+
+const updateParticles = () => {
+  if (!particleCanvas.value) {
+    animationFrameId = requestAnimationFrame(updateParticles)
+    return
+  }
+  const ctx = particleCanvas.value.getContext('2d')
+  if (!ctx) return
+  
+  ctx.clearRect(0, 0, particleCanvas.value.width, particleCanvas.value.height)
+  
+  for(let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i]
+    p.life++
+    p.x += p.vx
+    p.vy += 0.4 // Gravity
+    p.y += p.vy
+    
+    ctx.globalAlpha = Math.max(0, 1 - (p.life / p.maxLife))
+    ctx.fillStyle = p.color
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+    ctx.fill()
+    
+    if (p.life >= p.maxLife) {
+      particles.splice(i, 1)
+    }
+  }
+  ctx.globalAlpha = 1
+  animationFrameId = requestAnimationFrame(updateParticles)
+}
+
+// --- Logic ---
 watch(() => gameStore.isOpeningPack, (newVal) => {
   if (newVal) {
     flipped.value = [false, false, false, false, false]
+    
+    // Attempt play tear sound
+    playTearSound()
+    
+    setTimeout(() => {
+      if (particleCanvas.value) {
+        particleCanvas.value.width = window.innerWidth
+        particleCanvas.value.height = window.innerHeight
+      }
+      particles = []
+      cancelAnimationFrame(animationFrameId)
+      updateParticles()
+    }, 50)
+  } else {
+    cancelAnimationFrame(animationFrameId)
+    particles = []
   }
 })
 
-const flipCard = (index: number) => {
+onUnmounted(() => {
+  cancelAnimationFrame(animationFrameId)
+})
+
+const flipCard = (index: number, event: MouseEvent) => {
+  if (flipped.value[index]) return
   flipped.value[index] = true
+  playFlipSound()
+  
+  const card = gameStore.currentPack[index]
+  if (card.rarity === 'Rare') {
+    playRareSound()
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    emitParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, '#eab308', 60)
+  } else if (card.rarity === 'Uncommon') {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    emitParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, '#3b82f6', 20)
+  }
 }
 
 const allFlipped = () => {
@@ -23,7 +173,10 @@ const allFlipped = () => {
 
 <template>
   <div v-if="gameStore.isOpeningPack" class="absolute top-0 left-0 w-full h-full z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center pointer-events-auto">
-    <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 mb-16 animate-pulse tracking-widest drop-shadow-lg">
+    <!-- Particle Canvas Layer -->
+    <canvas ref="particleCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+
+    <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 mb-16 animate-pulse tracking-widest drop-shadow-lg z-10">
       ⭐ PACK REVEAL ⭐
     </h1>
 
@@ -31,8 +184,8 @@ const allFlipped = () => {
       <div 
         v-for="(card, index) in gameStore.currentPack" 
         :key="index"
-        class="w-52 h-72 perspective-1000 cursor-pointer group"
-        @click="flipCard(index)"
+        class="w-52 h-72 perspective-1000 cursor-pointer group z-10"
+        @click="flipCard(index, $event)"
       >
         <div 
           class="relative w-full h-full transition-transform duration-700 transform-style-3d"
