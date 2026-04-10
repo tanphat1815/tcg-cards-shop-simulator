@@ -26,6 +26,7 @@ export const useGameStore = defineStore('game', {
     },
     shopState: 'CLOSED' as 'OPEN' | 'CLOSED',
     waitingCustomers: 0,
+    waitingQueue: [] as number[],
     allCards: cardsData as CardData[]
   }),
   actions: {
@@ -42,13 +43,15 @@ export const useGameStore = defineStore('game', {
       }
       return false
     },
-    addWaitingCustomer() {
+    addWaitingCustomer(price: number) {
       this.waitingCustomers++
+      this.waitingQueue.push(price)
     },
     serveCustomer() {
       if (this.waitingCustomers > 0) {
         this.waitingCustomers--
-        this.addMoney(5)
+        const price = this.waitingQueue.shift() || 0
+        this.addMoney(price)
       }
     },
     placeItemOnShelf(shelfId: 'shelf1' | 'shelf2') {
@@ -80,13 +83,14 @@ export const useGameStore = defineStore('game', {
     npcTakeItemFromShelf(shelfId: 'shelf1' | 'shelf2') {
       const shelf = this.shelves[shelfId]
       if (shelf && shelf.quantity > 0) {
+        const cardId = shelf.cardId
         shelf.quantity--
         if (shelf.quantity === 0) {
           this.shelves[shelfId] = null
         }
-        return true
+        return cardId
       }
-      return false
+      return null
     },
     openPack() {
       const PACK_PRICE = 10

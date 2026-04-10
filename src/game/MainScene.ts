@@ -9,12 +9,15 @@ interface Customer {
   timer: number;
   targetX: number;
   targetY: number;
+  targetPrice: number;
 }
 
 export default class MainScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite
   private customers: Customer[] = []
   private shelvesGroup!: Phaser.Physics.Arcade.StaticGroup
+  private cashierGroup!: Phaser.Physics.Arcade.StaticGroup
+  private cashierDesk!: Phaser.Physics.Arcade.Sprite
   private keyE!: Phaser.Input.Keyboard.Key
   private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
 
@@ -63,12 +66,23 @@ export default class MainScene extends Phaser.Scene {
     this.shelfTexts['shelf1'] = this.add.text(200, 100, '🪹 Empty', { fontSize: '12px', color: '#fff', backgroundColor: '#000' }).setOrigin(0.5)
     this.shelfTexts['shelf2'] = this.add.text(500, 100, '🪹 Empty', { fontSize: '12px', color: '#fff', backgroundColor: '#000' }).setOrigin(0.5)
 
+    // Tạo Quầy thu ngân (Cashier)
+    this.cashierGroup = this.physics.add.staticGroup()
+    const cashierGraphics = this.make.graphics({ x: 0, y: 0 })
+    cashierGraphics.fillStyle(0x808080, 1) // Gray
+    cashierGraphics.fillRect(0, 0, 96, 32)
+    cashierGraphics.generateTexture('cashierBox', 96, 32)
+    
+    this.cashierDesk = this.cashierGroup.create(600, 180, 'cashierBox') as Phaser.Physics.Arcade.Sprite
+    this.cashierDesk.setData('id', 'cashier')
+
     // Player
     this.player = this.physics.add.sprite(400, 300, 'playerBox')
     this.player.setCollideWorldBounds(true)
 
-    // Va chạm với kệ
+    // Va chạm
     this.physics.add.collider(this.player, this.shelvesGroup)
+    this.physics.add.collider(this.player, this.cashierGroup)
 
     // Cấu hình phím
     if (this.input.keyboard) {
@@ -97,12 +111,12 @@ export default class MainScene extends Phaser.Scene {
 
     gameStore.$subscribe((mutation, state) => {
       if (state.waitingCustomers < lastWaitingCount) {
-        const waitingCust = this.customers.find(c => c.state === 'WAITING')
-        if (waitingCust) {
-          waitingCust.state = 'LEAVE'
-          waitingCust.targetX = 400
-          waitingCust.targetY = 650
-          this.physics.moveTo(waitingCust.sprite, waitingCust.targetX, waitingCust.targetY, 100)
+        // Tìm 1 khách hàng đang đợi và xóa trực tiếp
+        const waitingIndex = this.customers.findIndex(c => c.state === 'WAITING')
+        if (waitingIndex !== -1) {
+          const waitingCust = this.customers[waitingIndex]
+          waitingCust.sprite.destroy()
+          this.customers.splice(waitingIndex, 1)
         }
       }
       lastWaitingCount = state.waitingCustomers
@@ -120,7 +134,8 @@ export default class MainScene extends Phaser.Scene {
       state: 'SPAWN',
       timer: this.time.now + 1000,
       targetX: 400,
-      targetY: 600
+      targetY: 600,
+      targetPrice: 0
     })
   }
 
@@ -130,10 +145,19 @@ export default class MainScene extends Phaser.Scene {
     // Bắt sự kiện ấn phím E (chỉ tính 1 lần ấn xuống JustDown)
     if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
       const store = useGameStore()
+      
+      // Tương tác Cashier
+      const distToCashier = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.cashierDesk.x, this.cashierDesk.y)
+      if (distToCashier < 80) {
+        if (store.waitingCustomers > 0) {
+          store.serveCustomer()
+        }
+      }
+
+      // Tương tác Shelf
       this.shelvesGroup.getChildren().forEach(child => {
         const shelf = child as Phaser.Physics.Arcade.Sprite
         const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, shelf.x, shelf.y)
-        // Nếu đứng đủ gần (bán kính 70px)
         if (dist < 70) {
           store.placeItemOnShelf(shelf.getData('id'))
         }
@@ -228,13 +252,16 @@ export default class MainScene extends Phaser.Scene {
           if (time > customer.timer) {
             const store = useGameStore()
             const shelfIdToTake = customer.targetX === 200 ? 'shelf1' : 'shelf2'
-            const tookItem = store.npcTakeItemFromShelf(shelfIdToTake)
+            const cardId = store.npcTakeItemFromShelf(shelfIdToTake)
             
-            if (tookItem) {
+            if (cardId) {
+              const cardData = store.allCards.find(c => c.id === cardId)
+              customer.targetPrice = cardData ? cardData.marketPrice : 5
+
               customer.state = 'GO_CASHIER'
               const offset = this.customers.filter(c => c.state === 'WAITING').length * 40
               customer.targetX = 600 
-              customer.targetY = 200 + offset 
+              customer.targetY = 220 + offset 
             } else {
               customer.state = 'WANDER'
               customer.targetX = Phaser.Math.Between(100, 700)
@@ -249,7 +276,7 @@ export default class MainScene extends Phaser.Scene {
             sprite.body!.velocity.set(0)
             if (customer.state !== 'WAITING') { 
               customer.state = 'WAITING'
-              useGameStore().addWaitingCustomer()
+              useGameStore().addWaitingCustomer(customer.targetPrice)
             }
           }
           break
