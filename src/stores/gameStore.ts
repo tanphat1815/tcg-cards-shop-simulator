@@ -32,6 +32,19 @@ export const useGameStore = defineStore('game', {
     allCards: cardsData as CardData[]
   }),
   actions: {
+    loadSave() {
+      const saved = localStorage.getItem('tcg-shop-save')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          this.money = parsed.money ?? 1000
+          this.inventory = parsed.inventory ?? {}
+          this.shelves = parsed.shelves ?? { shelf1: null, shelf2: null }
+        } catch (e) {
+          console.error("Lỗi khi đọc file save", e)
+        }
+      }
+    },
     setShopState(newState: 'OPEN' | 'CLOSED') {
       this.shopState = newState
     },

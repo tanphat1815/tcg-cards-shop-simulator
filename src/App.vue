@@ -1,7 +1,23 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import GameContainer from './components/GameContainer.vue'
 import UIOverlay from './components/UIOverlay.vue'
 import PackOpeningOverlay from './components/PackOpeningOverlay.vue'
+import { useGameStore } from './stores/gameStore'
+
+const store = useGameStore()
+
+onMounted(() => {
+  store.loadSave()
+  
+  store.$subscribe((mutation, state) => {
+    localStorage.setItem('tcg-shop-save', JSON.stringify({
+      money: state.money,
+      inventory: state.inventory,
+      shelves: state.shelves
+    }))
+  }, { deep: true })
+})
 </script>
 
 <template>
