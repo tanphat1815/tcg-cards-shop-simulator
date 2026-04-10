@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import cardsData from '../assets/data/cards.json'
 import { getRequiredExp, XP_REWARDS } from '../config/leveling'
 import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
+import { WORKERS, SPEED_TO_MS } from '../config/workerData'
 
 export interface CardData {
   id: string
@@ -11,6 +12,14 @@ export interface CardData {
   rarity: string
   marketPrice: number
   imageKey: string
+}
+
+export type WorkerDuty = 'NONE' | 'CASHIER' | 'STOCKER'
+
+export interface HiredWorker {
+  instanceId: string;
+  workerId: string;
+  duty: WorkerDuty;
 }
 
 export interface ShelfTier {
@@ -58,6 +67,8 @@ export const useGameStore = defineStore('game', {
     // Online Shop
     showOnlineShop: false,
     purchasedFurniture: {} as Record<string, number>,
+    // Staff
+    hiredWorkers: [] as HiredWorker[],
     // Leveling
     level: 1,
     currentExp: 0,
@@ -66,7 +77,11 @@ export const useGameStore = defineStore('game', {
       revenue: 0,
       customersServed: 0,
       itemsSold: 0
-    }
+    },
+    // Missing state properties causing TS errors
+    currentDay: 1,
+    timeInMinutes: 480, // 8:00 AM
+    showEndDayModal: false
   }),
   getters: {
     requiredExp: (state) => getRequiredExp(state.level),
@@ -96,6 +111,7 @@ export const useGameStore = defineStore('game', {
           this.shopState = parsed.shopState ?? 'OPEN'
           this.level = parsed.level ?? 1
           this.currentExp = parsed.currentExp ?? 0
+          this.hiredWorkers = parsed.hiredWorkers ?? []
         } catch (e) {
           console.error("Lỗi khi đọc file save", e)
         }
@@ -362,6 +378,37 @@ export const useGameStore = defineStore('game', {
       
       this.cancelBuildMode()
     },
+    // --- Staff Management ---
+    hireWorker(workerId: string) {
+      const data = WORKERS.find(w => w.id === workerId)
+      if (!data) return false
+      if (this.money < data.hiringFee) return false
+      if (this.level < data.levelUnlocked) return false
+      
+      this.money -= data.hiringFee
+      this.hiredWorkers.push({
+        instanceId: `worker_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        workerId: workerId,
+        duty: 'NONE'
+      })
+      return true
+    },
+    changeWorkerDuty(instanceId: string, duty: WorkerDuty) {
+      const worker = this.hiredWorkers.find(w => w.instanceId === instanceId)
+      if (!worker) return
+      
+      // If setting to CASHIER, unassign previous cashier
+      if (duty === 'CASHIER') {
+        this.hiredWorkers.forEach(w => {
+          if (w.duty === 'CASHIER') w.duty = 'NONE'
+        })
+      }
+      
+      worker.duty = duty
+    },
+    terminateWorker(instanceId: string) {
+      this.hiredWorkers = this.hiredWorkers.filter(w => w.instanceId !== instanceId)
+    },
     tickTime(minutes: number) {
       if (this.shopState === 'OPEN') {
         this.timeInMinutes += minutes
@@ -372,6 +419,16 @@ export const useGameStore = defineStore('game', {
       }
     },
     startNewDay() {
+      // Deduct worker salaries
+      let totalSalary = 0
+      this.hiredWorkers.forEach(hw => {
+        const data = WORKERS.find(w => w.id === hw.workerId)
+        if (data) totalSalary += data.salary
+      })
+      
+      // We allow negative money but maybe better to alert?
+      this.money -= totalSalary
+      
       this.currentDay++
       this.timeInMinutes = 480 // 8:00 AM
       this.shopState = 'OPEN'

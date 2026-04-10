@@ -4,7 +4,8 @@ import { useGameStore } from '../stores/gameStore'
 import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
 
 const gameStore = useGameStore()
-const activeTab = ref<'STOCK' | 'FURNITURE'>('STOCK')
+const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF'>('STOCK')
+import { WORKERS } from '../config/workerData'
 
 const purchaseStock = (id: string, price: number) => {
   if (gameStore.money < price) {
@@ -27,6 +28,15 @@ const purchaseFurniture = (id: string, price: number) => {
     // Play cha-ching
   }
 }
+
+const hireWorker = (workerId: string) => {
+  const success = gameStore.hireWorker(workerId)
+  if (!success) {
+    alert("Không đủ tiền hoặc Level chưa đạt yêu cầu!")
+  }
+}
+
+const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
 </script>
 
 <template>
@@ -76,6 +86,13 @@ const purchaseFurniture = (id: string, price: number) => {
           :class="activeTab === 'FURNITURE' ? 'bg-white text-indigo-700 border-gray-300 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]' : 'text-gray-500 hover:bg-gray-200'"
         >
           🪑 Nội Thất Shop (Furniture)
+        </button>
+        <button 
+          @click="activeTab = 'STAFF'"
+          class="px-6 py-3 font-bold uppercase tracking-wider rounded-t-lg transition-colors border-x border-t border-transparent"
+          :class="activeTab === 'STAFF' ? 'bg-white text-indigo-700 border-gray-300 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]' : 'text-gray-500 hover:bg-gray-200'"
+        >
+          👨‍💼 Nhân Sự (Staff)
         </button>
       </div>
 
@@ -134,48 +151,94 @@ const purchaseFurniture = (id: string, price: number) => {
           </div>
         </div>
 
-        <!-- Furniture Tab -->
-        <div v-if="activeTab === 'FURNITURE'" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div 
-            v-for="furn in Object.values(FURNITURE_ITEMS)" 
-            :key="furn.id"
-            class="bg-white rounded-xl overflow-hidden shadow-md border border-gray-200 relative flex group"
-          >
-            <!-- Lock Overlay if Level not met -->
-            <div v-if="gameStore.level < furn.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
-              <span class="text-4xl mb-2">🔒</span>
-              <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-sm shadow-xl border-2 border-red-800">
-                Unlock at Level {{ furn.requiredLevel }}
+        <!-- Staff Tab -->
+        <div v-if="activeTab === 'STAFF'" class="flex flex-col gap-10">
+          
+          <!-- Hired Staff Management -->
+          <div v-if="gameStore.hiredWorkers.length > 0" class="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100">
+            <h2 class="text-xl font-black text-indigo-900 mb-6 flex items-center gap-2">
+              📋 QUẢN LÝ NHÂN VIÊN HIỆN CÓ ({{ gameStore.hiredWorkers.length }})
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div v-for="hw in gameStore.hiredWorkers" :key="hw.instanceId" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+                <div class="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center text-3xl shadow-inner">
+                  👤
+                </div>
+                <div class="flex-grow">
+                  <h4 class="font-bold text-gray-900">{{ getWorkerData(hw.workerId)?.name }}</h4>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold uppercase">Nhiệm vụ:</span>
+                    <select 
+                      v-model="hw.duty" 
+                      @change="gameStore.changeWorkerDuty(hw.instanceId, hw.duty)"
+                      class="text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded px-1 py-0.5 focus:ring-0"
+                    >
+                      <option value="NONE">Đang nghỉ</option>
+                      <option value="CASHIER">Thu ngân</option>
+                      <option value="STOCKER">Xếp hàng</option>
+                    </select>
+                  </div>
+                </div>
+                <button @click="gameStore.terminateWorker(hw.instanceId)" class="text-red-400 hover:text-red-700 p-2" title="Đuổi việc">
+                   🗑️
+                </button>
               </div>
             </div>
+          </div>
 
-            <div class="w-2/5 min-h-[200px] bg-gradient-to-br from-orange-100 to-orange-50 flex items-center justify-center border-r border-gray-100" :class="{ 'grayscale blur-[1px]': gameStore.level < furn.requiredLevel }">
-               <div class="text-[80px] drop-shadow-xl grayscale-[0.2] transform group-hover:scale-110 transition-transform">
-                 🗄️
-               </div>
+          <!-- Recruitment App (GO Recruit) -->
+          <div>
+            <div class="flex items-center gap-3 mb-6">
+               <div class="bg-indigo-600 text-white p-2 rounded-lg text-xl font-bold italic shadow-lg">GO</div>
+               <h2 class="text-xl font-black text-gray-800 uppercase tracking-tight">Recruit - Ứng tuyển nhân sự</h2>
             </div>
-            
-            <div class="w-3/5 p-6 flex flex-col" :class="{ 'grayscale opacity-70': gameStore.level < furn.requiredLevel }">
-              <div class="flex justify-between items-start mb-2">
-                <h3 class="font-bold text-gray-900 text-xl leading-tight">{{ furn.name }}</h3>
-                <span v-if="gameStore.purchasedFurniture[furn.id]" class="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-0.5 rounded border border-orange-200">
-                  Có: {{ gameStore.purchasedFurniture[furn.id] }}
-                </span>
-              </div>
-              <p class="text-sm text-gray-500 mb-4">{{ furn.description }}</p>
-              
-              <div class="bg-blue-50/50 p-3 rounded-lg border border-blue-100 text-sm flex items-center gap-2 text-blue-800 font-medium mb-auto">
-                 <span>📦</span> Sức chứa: {{ furn.capacityStr }}
-              </div>
 
-              <button 
-                :disabled="gameStore.level < furn.requiredLevel"
-                @click="purchaseFurniture(furn.id, furn.buyPrice)"
-                class="w-full mt-4 font-bold py-3 px-4 rounded-xl shadow uppercase tracking-wider transition-all active:scale-95"
-                :class="gameStore.level >= furn.requiredLevel ? 'bg-orange-500 hover:bg-orange-600 text-white hover:shadow-lg hover:shadow-orange-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
-              >
-                Mua (${{ furn.buyPrice }})
-              </button>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div v-for="w in WORKERS" :key="w.id" class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-200 relative group flex flex-col">
+                <!-- Level Lock -->
+                <div v-if="gameStore.level < w.levelUnlocked" class="absolute inset-0 bg-gray-900/40 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center">
+                  <span class="text-2xl mb-1">🔒</span>
+                  <div class="bg-gray-800 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase">Level {{ w.levelUnlocked }} Required</div>
+                </div>
+
+                <div class="h-24 bg-gradient-to-r from-gray-100 to-white flex items-center px-6 gap-4 border-b border-gray-100">
+                  <div class="w-16 h-16 bg-white rounded-full border-2 border-gray-200 flex items-center justify-center text-4xl shadow-sm">👤</div>
+                  <div>
+                    <h3 class="font-bold text-gray-900 text-lg leading-none">{{ w.name }}</h3>
+                    <span class="text-[10px] text-gray-400 uppercase font-black tracking-widest mt-1 block">Level {{ w.levelUnlocked }}</span>
+                  </div>
+                </div>
+
+                <div class="p-5 flex-grow">
+                  <div class="grid grid-cols-2 gap-3 mb-5">
+                    <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                      <span class="text-[9px] text-gray-500 uppercase block">Checkout</span>
+                      <span class="text-xs font-bold" :class="w.checkoutSpeed === 'Very Fast' ? 'text-green-600' : 'text-gray-700'">{{ w.checkoutSpeed }}</span>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                      <span class="text-[9px] text-gray-500 uppercase block">Restock</span>
+                      <span class="text-xs font-bold" :class="w.restockSpeed === 'Very Fast' ? 'text-green-600' : 'text-gray-700'">{{ w.restockSpeed }}</span>
+                    </div>
+                    <div class="bg-indigo-50 p-2 rounded-lg border border-indigo-100">
+                      <span class="text-[9px] text-indigo-500 uppercase block">Hiring Fee</span>
+                      <span class="text-xs font-bold text-indigo-700">${{ w.hiringFee }}</span>
+                    </div>
+                    <div class="bg-orange-50 p-2 rounded-lg border border-orange-100">
+                      <span class="text-[9px] text-orange-500 uppercase block">Daily Salary</span>
+                      <span class="text-xs font-bold text-orange-700">${{ w.salary }}/day</span>
+                    </div>
+                  </div>
+
+                  <button 
+                    :disabled="gameStore.level < w.levelUnlocked"
+                    @click="hireWorker(w.id)"
+                    class="w-full font-bold py-2.5 px-4 rounded-xl shadow-md uppercase tracking-wider transition-all active:scale-95"
+                    :class="gameStore.level >= w.levelUnlocked ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'"
+                  >
+                    Thuê Ngay
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

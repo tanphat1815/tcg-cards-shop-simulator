@@ -4,6 +4,7 @@ import playerImg from '../assets/images/player.svg'
 import npcImg from '../assets/images/npc.svg'
 import shelfImg from '../assets/images/shelf.svg'
 import cashierImg from '../assets/images/cashier.svg'
+import { WORKERS, SPEED_TO_MS } from '../config/workerData'
 
 type NPCState = 'SPAWN' | 'WANDER' | 'SEEK_ITEM' | 'INTERACT' | 'GO_CASHIER' | 'WAITING' | 'LEAVE'
 
@@ -27,6 +28,8 @@ export default class MainScene extends Phaser.Scene {
   private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
   private ghostSprite: Phaser.GameObjects.Sprite | null = null
   private isPlacementValid: boolean = false
+  private staffSprites: Map<string, Phaser.Physics.Arcade.Sprite> = new Map()
+  private lastAutoCheckoutTime: number = 0
 
   private cursors!: {
     up: Phaser.Input.Keyboard.Key,
@@ -157,7 +160,6 @@ export default class MainScene extends Phaser.Scene {
         }
       }
 
-      // Tương tác Shelf
       this.shelvesGroup.getChildren().forEach(child => {
         const shelf = child as Phaser.Physics.Arcade.Sprite
         const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, shelf.x, shelf.y)
@@ -166,6 +168,9 @@ export default class MainScene extends Phaser.Scene {
         }
       })
     }
+
+    // --- Auto Checkout Logic ---
+    this.handleAutoCheckout(time)
 
     // --- Build Mode Logic ---
     if (store.isBuildMode) {
@@ -360,6 +365,89 @@ export default class MainScene extends Phaser.Scene {
             this.customers.splice(i, 1) 
           }
           break
+      }
+    }
+
+    // Cập nhật Sprite Nhân viên
+    this.updateStaffSprites()
+  }
+
+  private updateStaffSprites() {
+    const store = useGameStore()
+    
+    // Xóa các sprite của nhân viên đã bị đuổi việc
+    const currentInstanceIds = new Set(store.hiredWorkers.map(w => w.instanceId))
+    for (const [instanceId, sprite] of this.staffSprites.entries()) {
+      if (!currentInstanceIds.has(instanceId)) {
+        sprite.destroy()
+        this.staffSprites.delete(instanceId)
+      }
+    }
+
+    // Cập nhật hoặc tạo mới sprite
+    store.hiredWorkers.forEach(hw => {
+      let sprite = this.staffSprites.get(hw.instanceId)
+      if (!sprite) {
+        sprite = this.physics.add.sprite(50, 500, 'npc') // Mặc định đứng ngoài
+        sprite.setTint(0xaaaaff) // Màu xanh nhạt để phân biệt với khách
+        this.staffSprites.set(hw.instanceId, sprite)
+      }
+
+      // Vị trí dựa trên Duty
+      let targetX = 50
+      let targetY = 500 + (parseInt(hw.instanceId.split('_')[1]) % 100) // Tránh chồng lấn hoàn toàn
+
+      if (hw.duty === 'CASHIER') {
+        targetX = 600
+        targetY = 150
+      } else if (hw.duty === 'STOCKER') {
+        targetX = 100
+        targetY = 550
+      }
+
+      // Di chuyển tới vị trí (Teleport hoặc MoveTo - ở đây dùng teleport cho đơn giản)
+      if (Phaser.Math.Distance.Between(sprite.x, sprite.y, targetX, targetY) > 5) {
+         this.physics.moveTo(sprite, targetX, targetY, 120)
+      } else {
+         sprite.body!.velocity.set(0)
+         // Quay mặt đúng hướng
+         if (hw.duty === 'CASHIER') sprite.setFrame(0) // Quay mặt xuống
+      }
+
+      // Animation staff
+      if (sprite.body!.velocity.lengthSq() > 0) {
+        const vx = sprite.body!.velocity.x
+        const vy = sprite.body!.velocity.y
+        if (Math.abs(vx) > Math.abs(vy)) sprite.anims.play(vx < 0 ? 'npc-left' : 'npc-right', true)
+        else sprite.anims.play(vy < 0 ? 'npc-up' : 'npc-down', true)
+      } else {
+        sprite.anims.stop()
+      }
+    })
+  }
+
+  private handleAutoCheckout(time: number) {
+    const store = useGameStore()
+    if (store.waitingCustomers <= 0) return
+
+    // Tìm xem ai là Cashier
+    const cashier = store.hiredWorkers.find(w => w.duty === 'CASHIER')
+    if (!cashier) return
+
+    const workerData = WORKERS.find(w => w.id === cashier.workerId)
+    if (!workerData) return
+
+    const cooldown = SPEED_TO_MS[workerData.checkoutSpeed]
+
+    if (time > this.lastAutoCheckoutTime + cooldown) {
+      store.serveCustomer()
+      this.lastAutoCheckoutTime = time
+      
+      // Hiệu ứng thanh toán tự động (optional)
+      const cashierSprite = this.staffSprites.get(cashier.instanceId)
+      if (cashierSprite) {
+        const pulse = this.add.text(cashierSprite.x, cashierSprite.y - 40, '💳 Auto', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5)
+        this.tweens.add({ targets: pulse, y: pulse.y - 20, alpha: 0, duration: 1000, onComplete: () => pulse.destroy() })
       }
     }
   }
