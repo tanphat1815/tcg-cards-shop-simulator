@@ -20,6 +20,7 @@ export const useGameStore = defineStore('game', {
   state: () => ({
     money: 1000,
     inventory: {} as Record<string, number>, // cardId -> quantity
+    binder: {} as Record<string, number>, // cardId -> quantity
     shelves: {
       shelf1: null as ShelfItem | null,
       shelf2: null as ShelfItem | null
@@ -34,6 +35,7 @@ export const useGameStore = defineStore('game', {
     currentDay: 1,
     timeInMinutes: 480, // 8:00 AM
     showEndDayModal: false,
+    showBinderMenu: false,
     dailyStats: {
       revenue: 0,
       customersServed: 0,
@@ -48,6 +50,7 @@ export const useGameStore = defineStore('game', {
           const parsed = JSON.parse(saved)
           this.money = parsed.money ?? 1000
           this.inventory = parsed.inventory ?? {}
+          this.binder = parsed.binder ?? {}
           this.shelves = parsed.shelves ?? { shelf1: null, shelf2: null }
           this.currentDay = parsed.currentDay ?? 1
           this.timeInMinutes = parsed.timeInMinutes ?? 480
@@ -173,6 +176,24 @@ export const useGameStore = defineStore('game', {
       this.shopState = 'OPEN'
       this.showEndDayModal = false
       this.dailyStats = { revenue: 0, customersServed: 0, itemsSold: 0 }
+    },
+    moveToBinder(cardId: string) {
+      if (this.inventory[cardId] > 0) {
+        this.inventory[cardId]--
+        if (this.inventory[cardId] === 0) delete this.inventory[cardId]
+        
+        if (!this.binder[cardId]) this.binder[cardId] = 0
+        this.binder[cardId]++
+      }
+    },
+    moveToInventory(cardId: string) {
+      if (this.binder[cardId] > 0) {
+        this.binder[cardId]--
+        if (this.binder[cardId] === 0) delete this.binder[cardId]
+        
+        if (!this.inventory[cardId]) this.inventory[cardId] = 0
+        this.inventory[cardId]++
+      }
     }
   }
 })

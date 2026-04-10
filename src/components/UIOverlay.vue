@@ -87,9 +87,14 @@ const inventoryDetails = computed(() => {
 
     <!-- Bottom-right: Inventory List -->
     <div class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-md self-end w-full max-h-[50%] flex flex-col mt-auto">
-      <h3 class="text-lg font-bold text-gray-100 mb-4 flex items-center gap-2">
-        <span>📦</span> Thẻ đang có (Inventory)
-      </h3>
+      <div class="flex justify-between items-center mb-4 border-b border-gray-700/50 pb-3">
+        <h3 class="text-lg font-bold text-gray-100 flex items-center gap-2">
+          <span>📦</span> Inventory
+        </h3>
+        <button @click="gameStore.showBinderMenu = true" class="text-xs bg-indigo-600 hover:bg-indigo-500 font-bold px-3 py-1.5 rounded-lg text-white shadow shadow-indigo-500/30 flex items-center gap-1 transition-colors">
+          <span>📔</span> Binder
+        </button>
+      </div>
       
       <div v-if="inventoryDetails.length === 0" class="text-gray-400 italic text-sm text-center py-8">
         Kho đồ trống rỗng. Hãy mua một Pack!
@@ -108,8 +113,11 @@ const inventoryDetails = computed(() => {
             }">{{ item.name }}</span>
             <span class="text-[11px] uppercase tracking-wider text-gray-500 font-semibold">{{ item.rarity }}</span>
           </div>
-          <div class="bg-gray-900 text-gray-200 px-3 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold">
-            x{{ item.quantity }}
+          <div class="flex items-center gap-3">
+            <button @click="gameStore.moveToBinder(item.id)" title="Cất vào Sổ Sưu Tầm" class="hover:scale-125 transition-transform text-lg opacity-60 hover:opacity-100">📔</button>
+            <div class="bg-gray-900 text-gray-200 px-3 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold w-12 text-center">
+              x{{ item.quantity }}
+            </div>
           </div>
         </div>
       </div>
