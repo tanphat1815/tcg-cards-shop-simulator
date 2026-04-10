@@ -15,6 +15,7 @@ interface Customer {
 export default class MainScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite
   private customers: Customer[] = []
+  private cashierQueue: Customer[] = []
   private shelvesGroup!: Phaser.Physics.Arcade.StaticGroup
   private cashierGroup!: Phaser.Physics.Arcade.StaticGroup
   private cashierDesk!: Phaser.Physics.Arcade.Sprite
@@ -111,12 +112,14 @@ export default class MainScene extends Phaser.Scene {
 
     gameStore.$subscribe((mutation, state) => {
       if (state.waitingCustomers < lastWaitingCount) {
-        // Tìm 1 khách hàng đang đợi và xóa trực tiếp
-        const waitingIndex = this.customers.findIndex(c => c.state === 'WAITING')
-        if (waitingIndex !== -1) {
-          const waitingCust = this.customers[waitingIndex]
-          waitingCust.sprite.destroy()
-          this.customers.splice(waitingIndex, 1)
+        if (this.cashierQueue.length > 0) {
+          const servedCust = this.cashierQueue.shift()!
+          servedCust.sprite.destroy()
+          
+          const indexInCustomers = this.customers.indexOf(servedCust)
+          if (indexInCustomers !== -1) {
+            this.customers.splice(indexInCustomers, 1)
+          }
         }
       }
       lastWaitingCount = state.waitingCustomers
@@ -201,6 +204,12 @@ export default class MainScene extends Phaser.Scene {
       this.player.body.velocity.normalize().scale(speed)
     }
 
+    // Cập nhật targetY của các khách đang xếp hàng để tự dồn lên
+    this.cashierQueue.forEach((cust, idx) => {
+       cust.targetX = 600
+       cust.targetY = 220 + idx * 45
+    })
+
     // NPC Logic
     for (let i = this.customers.length - 1; i >= 0; i--) {
       const customer = this.customers[i]
@@ -259,9 +268,8 @@ export default class MainScene extends Phaser.Scene {
               customer.targetPrice = cardData ? cardData.marketPrice : 5
 
               customer.state = 'GO_CASHIER'
-              const offset = this.customers.filter(c => c.state === 'WAITING').length * 40
-              customer.targetX = 600 
-              customer.targetY = 220 + offset 
+              useGameStore().addWaitingCustomer(customer.targetPrice)
+              this.cashierQueue.push(customer)
             } else {
               customer.state = 'WANDER'
               customer.targetX = Phaser.Math.Between(100, 700)
@@ -272,17 +280,22 @@ export default class MainScene extends Phaser.Scene {
           break
 
         case 'GO_CASHIER':
-          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) > 5) {
+            this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+          } else {
             sprite.body!.velocity.set(0)
-            if (customer.state !== 'WAITING') { 
-              customer.state = 'WAITING'
-              useGameStore().addWaitingCustomer(customer.targetPrice)
-            }
+            customer.state = 'WAITING'
           }
           break
 
         case 'WAITING':
-          sprite.body!.velocity.set(0) 
+          // Nếu slot trống phía trước, target thay đổi -> khoảng cách > 5 -> Tiến lên!
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) > 5) {
+            customer.state = 'GO_CASHIER'
+            this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+          } else {
+            sprite.body!.velocity.set(0) 
+          }
           break
 
         case 'LEAVE':
