@@ -13,15 +13,22 @@ export interface CardData {
   imageKey: string
 }
 
-export interface ShelfSlot {
-  itemId: string | null;
-  quantity: number;
+export interface ShelfTier {
+  itemId: string | null;  // Which item fills this tier (null = empty, all slots same type)
+  slots: (string | null)[];  // Each slot: itemId or null
+  maxSlots: number;          // 32 for packs, 4 for boxes
 }
 
 export interface ShelfData {
   id: string;
-  slots: ShelfSlot[]; // 48 slots
+  tiers: ShelfTier[]; // 3 tiers
 }
+
+const createEmptyTier = (): ShelfTier => ({ itemId: null, slots: [], maxSlots: 0 })
+const createShelf = (id: string): ShelfData => ({
+  id,
+  tiers: [createEmptyTier(), createEmptyTier(), createEmptyTier()]
+})
 
 export const useGameStore = defineStore('game', {
   state: () => ({
@@ -29,8 +36,8 @@ export const useGameStore = defineStore('game', {
     shopInventory: {} as Record<string, number>, // itemId -> quantity
     personalBinder: {} as Record<string, number>, // cardId -> quantity
     placedShelves: {
-      shelf1: { id: 'shelf1', slots: Array(48).fill(null).map(() => ({ itemId: null, quantity: 0 })) } as ShelfData,
-      shelf2: { id: 'shelf2', slots: Array(48).fill(null).map(() => ({ itemId: null, quantity: 0 })) } as ShelfData
+      shelf1: createShelf('shelf1'),
+      shelf2: createShelf('shelf2')
     } as Record<string, ShelfData>,
     activeShelfId: null as string | null,
     showShelfMenu: false,
@@ -68,12 +75,13 @@ export const useGameStore = defineStore('game', {
           this.personalBinder = parsed.personalBinder ?? {}
           this.purchasedFurniture = parsed.purchasedFurniture ?? {}
           if (parsed.placedShelves) {
-            // Check backward compatibility
-            const sampleSlot = parsed.placedShelves['shelf1']?.slots[0]
-            if (sampleSlot && typeof sampleSlot.cardId !== 'undefined') {
-              console.warn("Detected old save format for shelves. Wiping shelves to apply new Data Model.")
+            // Wipe old save format (slots-based) to apply new tier-based model
+            const shelf1 = parsed.placedShelves['shelf1']
+            const hasTiers = shelf1 && Array.isArray(shelf1.tiers)
+            if (hasTiers) {
+              this.placedShelves = parsed.placedShelves
             } else {
-              this.placedShelves = parsed.placedShelves;
+              console.warn('Old save (slots[]) detected — wiping shelves for new tier model.')
             }
           }
           this.currentDay = parsed.currentDay ?? 1
@@ -124,109 +132,100 @@ export const useGameStore = defineStore('game', {
       this.activeShelfId = null
       this.showShelfMenu = false
     },
-    moveToShelfSlot(itemId: string, slotIndex: number) {
+    // --- Tier-based shelf actions ---
+    moveToTierSlot(itemId: string, tierIndex: number) {
       if (!this.activeShelfId) return
       const shelf = this.placedShelves[this.activeShelfId]
       if (!shelf) return
-
-      const slot = shelf.slots[slotIndex]
       const itemData = this.shopItems[itemId]
       if (!itemData) return
-      const maxQty = Math.floor(32 / itemData.volume)
+      if (this.shopInventory[itemId] <= 0) return
 
-      // Xử lý ném hàng cũ vào kho nếu khác loại
-      if (slot.itemId && slot.itemId !== itemId) {
-        if (!this.shopInventory[slot.itemId]) this.shopInventory[slot.itemId] = 0
-        this.shopInventory[slot.itemId] += slot.quantity
-        slot.itemId = null
-        slot.quantity = 0
-      }
+      const tier = shelf.tiers[tierIndex]
+      const isBox = itemData.type === 'box'
+      const maxSlots = isBox ? 4 : 32
 
-      if (this.shopInventory[itemId] > 0) {
-        if (slot.itemId === null) {
-          slot.itemId = itemId
-          slot.quantity = 1
-          this.shopInventory[itemId]--
-          if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
-        } else if (slot.itemId === itemId && slot.quantity < maxQty) {
-          slot.quantity++
-          this.shopInventory[itemId]--
-          if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
-        }
+      // Tier is empty: claim it for this item type
+      if (tier.itemId === null) {
+        tier.itemId = itemId
+        tier.maxSlots = maxSlots
+        tier.slots = []
       }
+      // Tier type mismatch: reject
+      if (tier.itemId !== itemId) return
+      // Tier is full: reject
+      if (tier.slots.length >= tier.maxSlots) return
+
+      tier.slots.push(itemId)
+      this.shopInventory[itemId]--
+      if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
     },
-    clearShelfSlot(shelfId: string, slotIndex: number) {
+    fillTier(itemId: string, tierIndex: number) {
+      if (!this.activeShelfId) return
+      const shelf = this.placedShelves[this.activeShelfId]
+      if (!shelf) return
+      const itemData = this.shopItems[itemId]
+      if (!itemData) return
+
+      const tier = shelf.tiers[tierIndex]
+      const isBox = itemData.type === 'box'
+      const maxSlots = isBox ? 4 : 32
+
+      if (tier.itemId === null) {
+        tier.itemId = itemId
+        tier.maxSlots = maxSlots
+        tier.slots = []
+      }
+      if (tier.itemId !== itemId) return
+
+      const spaceLeft = tier.maxSlots - tier.slots.length
+      const available = this.shopInventory[itemId] ?? 0
+      const toAdd = Math.min(spaceLeft, available)
+
+      for (let i = 0; i < toAdd; i++) {
+        tier.slots.push(itemId)
+      }
+      this.shopInventory[itemId] -= toAdd
+      if (this.shopInventory[itemId] <= 0) delete this.shopInventory[itemId]
+    },
+    clearTier(shelfId: string, tierIndex: number) {
       const shelf = this.placedShelves[shelfId]
       if (!shelf) return
-      
-      const slot = shelf.slots[slotIndex]
-      if (slot.itemId) {
-        if (!this.shopInventory[slot.itemId]) this.shopInventory[slot.itemId] = 0
-        this.shopInventory[slot.itemId] += slot.quantity
-        slot.itemId = null
-        slot.quantity = 0
-      }
-    },
-    autoFillShelf(itemId: string, startSlotIndex: number = 0) {
-      if (!this.activeShelfId) return
-      const shelf = this.placedShelves[this.activeShelfId]
-      if (!shelf) return
-      
-      const itemData = this.shopItems[itemId]
-      if (!itemData) return
-      const maxQty = Math.floor(32 / itemData.volume)
-      
-      for (let i = startSlotIndex; i < shelf.slots.length; i++) {
-        if (this.shopInventory[itemId] && this.shopInventory[itemId] > 0) {
-          const slot = shelf.slots[i]
-          
-          if (slot.itemId === null) {
-            slot.itemId = itemId
-            slot.quantity = 0
-          }
-          
-          if (slot.itemId === itemId) {
-            const spaceLeft = maxQty - slot.quantity
-            if (spaceLeft > 0) {
-              const amountToAdd = Math.min(spaceLeft, this.shopInventory[itemId])
-              slot.quantity += amountToAdd
-              this.shopInventory[itemId] -= amountToAdd
-              if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
-            }
-          }
-        } else {
-          break;
-        }
-      }
+      const tier = shelf.tiers[tierIndex]
+      if (!tier.itemId) return
+
+      if (!this.shopInventory[tier.itemId]) this.shopInventory[tier.itemId] = 0
+      this.shopInventory[tier.itemId] += tier.slots.length
+      tier.itemId = null
+      tier.slots = []
+      tier.maxSlots = 0
     },
     clearEntireShelf() {
       if (!this.activeShelfId) return
       const shelf = this.placedShelves[this.activeShelfId]
       if (!shelf) return
-      
-      for (let i = 0; i < shelf.slots.length; i++) {
-        this.clearShelfSlot(shelf.id, i)
-      }
+      shelf.tiers.forEach((_, i) => this.clearTier(shelf.id, i))
     },
     npcTakeItemFromSlot(shelfId: string) {
       const shelf = this.placedShelves[shelfId]
       if (!shelf) return null
-      
-      const filledSlots = shelf.slots.map((s, idx) => ({ s, idx })).filter(item => item.s.itemId !== null && item.s.quantity > 0)
-      if (filledSlots.length > 0) {
-        const randIndex = Math.floor(Math.random() * filledSlots.length)
-        const slot = filledSlots[randIndex]
-        const itemId = slot.s.itemId!
-        
-        shelf.slots[slot.idx].quantity--
-        if (shelf.slots[slot.idx].quantity <= 0) {
-          shelf.slots[slot.idx].itemId = null
-        }
-        
-        this.dailyStats.itemsSold++
-        return itemId
+
+      // Find tiers that have items
+      const filledTiers = shelf.tiers.map((t, idx) => ({ t, idx })).filter(x => x.t.itemId && x.t.slots.length > 0)
+      if (filledTiers.length === 0) return null
+
+      const picked = filledTiers[Math.floor(Math.random() * filledTiers.length)]
+      const tier = picked.t
+      const itemId = tier.itemId!
+
+      tier.slots.pop()
+      if (tier.slots.length === 0) {
+        tier.itemId = null
+        tier.maxSlots = 0
       }
-      return null
+
+      this.dailyStats.itemsSold++
+      return itemId
     },
     buyStock(itemId: string, amount: number = 1) {
       const itemData = STOCK_ITEMS[itemId]

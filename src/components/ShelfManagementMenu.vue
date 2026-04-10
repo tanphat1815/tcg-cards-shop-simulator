@@ -1,21 +1,19 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useGameStore } from '../stores/gameStore'
+import { STOCK_ITEMS } from '../config/shopData'
 
 const gameStore = useGameStore()
 const selectedItemId = ref<string | null>(null)
 
-// Computed inventory items (only quantities > 0)
-// Now using shopInventory which holds basic_pack only
 const inventoryItems = computed(() => {
-  return Object.keys(gameStore.shopInventory).map(itemId => {
-    const itemData = gameStore.shopItems[itemId]
-    return {
+  return Object.keys(gameStore.shopInventory)
+    .map(itemId => ({
       id: itemId,
-      item: itemData,
+      item: STOCK_ITEMS[itemId],
       quantity: gameStore.shopInventory[itemId]
-    }
-  }).filter(item => item.item !== undefined && item.quantity > 0)
+    }))
+    .filter(x => x.item !== undefined && x.quantity > 0)
 })
 
 const activeShelf = computed(() => {
@@ -23,136 +21,214 @@ const activeShelf = computed(() => {
   return gameStore.placedShelves[gameStore.activeShelfId]
 })
 
-const selectItem = (itemId: string) => {
-  selectedItemId.value = itemId
-}
+const selectItem = (id: string) => { selectedItemId.value = id }
 
-const handleSlotClick = (slotIndex: number) => {
+// Add 1 item to tier
+const handleTierClick = (tierIndex: number, event: MouseEvent) => {
   if (!selectedItemId.value) return
-  gameStore.moveToShelfSlot(selectedItemId.value, slotIndex)
-  if (!gameStore.shopInventory[selectedItemId.value] || gameStore.shopInventory[selectedItemId.value] === 0) {
-    selectedItemId.value = null // Deselect if ran out
-  }
-}
-
-const handleSlotClickWithShift = (event: MouseEvent, slotIndex: number) => {
   if (event.shiftKey) {
-     if (!selectedItemId.value) return
-     gameStore.autoFillShelf(selectedItemId.value)
-     if (!gameStore.shopInventory[selectedItemId.value] || gameStore.shopInventory[selectedItemId.value] === 0) {
-       selectedItemId.value = null
-     }
+    gameStore.fillTier(selectedItemId.value, tierIndex)
   } else {
-     handleSlotClick(slotIndex)
+    gameStore.moveToTierSlot(selectedItemId.value, tierIndex)
+  }
+  if (!gameStore.shopInventory[selectedItemId.value]) {
+    selectedItemId.value = null
   }
 }
 
-const clearSlot = (slotIndex: number) => {
+const clearTier = (tierIndex: number) => {
   if (!activeShelf.value) return
-  gameStore.clearShelfSlot(activeShelf.value.id, slotIndex)
+  gameStore.clearTier(activeShelf.value.id, tierIndex)
+}
+
+// Can we place selected item in this tier?
+const canPlaceInTier = (tierIndex: number) => {
+  if (!selectedItemId.value || !activeShelf.value) return false
+  const tier = activeShelf.value.tiers[tierIndex]
+  if (tier.itemId === null) return true
+  if (tier.itemId === selectedItemId.value) return tier.slots.length < tier.maxSlots
+  return false
+}
+
+// Tier fill percentage
+const tierFillPct = (tierIndex: number): number => {
+  if (!activeShelf.value) return 0
+  const tier = activeShelf.value.tiers[tierIndex]
+  if (!tier.itemId || tier.maxSlots === 0) return 0
+  return (tier.slots.length / tier.maxSlots) * 100
+}
+
+// Visual grid columns for rendering pack slots inside a tier
+// Packs: 4 cols × N rows (max 32 = 4×8). Boxes: 4 slots side by side.
+const tierColumns = (tierIndex: number): number => {
+  if (!activeShelf.value) return 4
+  const tier = activeShelf.value.tiers[tierIndex]
+  if (!tier.itemId) return 4
+  const itemData = STOCK_ITEMS[tier.itemId]
+  return itemData?.type === 'box' ? 4 : 4 // always 4 columns
 }
 </script>
 
 <template>
-  <div v-if="gameStore.showShelfMenu && activeShelf" class="absolute inset-0 z-[150] flex items-center justify-center bg-black/85 backdrop-blur-sm pointer-events-auto p-4">
-    <div class="bg-gray-900 border-2 border-indigo-500/50 rounded-2xl w-full max-w-6xl h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+  <div v-if="gameStore.showShelfMenu && activeShelf"
+    class="absolute inset-0 z-[150] flex items-center justify-center bg-black/85 backdrop-blur-sm pointer-events-auto p-4">
+    <div class="bg-gray-900 border-2 border-indigo-500/50 rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+
       <!-- Header -->
-      <div class="bg-gray-800 px-6 py-4 flex justify-between items-center border-b border-gray-700">
+      <div class="bg-gray-800 px-6 py-4 flex justify-between items-center border-b border-gray-700 shrink-0">
         <h2 class="text-2xl font-black text-white flex items-center gap-2">
-          <span>🏪</span> QUẢN LÝ KỆ HÀNG ({{ activeShelf.id }})
+          🗄️ KỆ HÀNG &nbsp;<span class="text-indigo-400 text-base font-medium">({{ activeShelf.id }})</span>
         </h2>
-        <button @click="gameStore.closeShelfManagement()" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
+        <div class="flex items-center gap-3">
+          <button @click="gameStore.clearEntireShelf()" class="bg-red-900/60 hover:bg-red-700 text-red-200 text-xs font-bold px-4 py-2 uppercase tracking-wider rounded shadow transition-colors border border-red-700/50">
+            Rút tất cả về Kho
+          </button>
+          <button @click="gameStore.closeShelfManagement()" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
       </div>
 
-      <!-- Main Body -->
-      <div class="flex-grow flex overflow-hidden">
-        
-        <!-- Left: Inventory -->
-        <div class="w-1/3 border-r border-gray-700 bg-gray-900/50 p-4 flex flex-col relative">
-          <h3 class="text-lg font-bold text-gray-200 mb-4 pb-2 border-b border-gray-700">📦 Kho hàng (Sắp xếp đồ lên kệ)</h3>
-          
-          <div v-if="inventoryItems.length === 0" class="text-center text-gray-500 italic mt-10">
-            Kho hiện đang trống.
+      <div class="flex-grow flex overflow-hidden min-h-0">
+
+        <!-- Left: Inventory selection -->
+        <div class="w-[220px] shrink-0 border-r border-gray-700 bg-gray-900/50 p-4 flex flex-col relative">
+          <h3 class="text-sm font-bold text-gray-200 mb-3 pb-2 border-b border-gray-700 uppercase tracking-wider">📦 Kho hàng</h3>
+
+          <div v-if="inventoryItems.length === 0" class="text-center text-gray-500 italic mt-10 text-sm">
+            Kho đang trống.
           </div>
-          
-          <div v-else class="flex-grow overflow-y-auto pr-2 custom-scroll space-y-2 pb-20">
-            <div 
-              v-for="item in inventoryItems" :key="item.id"
-              @click="selectItem(item.id)"
+
+          <div v-else class="flex-grow overflow-y-auto pr-1 custom-scroll space-y-2">
+            <div
+              v-for="inv in inventoryItems" :key="inv.id"
+              @click="selectItem(inv.id)"
               class="flex justify-between items-center p-3 rounded-xl border-2 cursor-pointer transition-all"
-              :class="selectedItemId === item.id ? 'bg-indigo-900/40 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'bg-gray-800/60 border-gray-700/50 hover:bg-gray-700'"
+              :class="selectedItemId === inv.id
+                ? 'bg-indigo-900/50 border-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.4)]'
+                : 'bg-gray-800/60 border-gray-700/40 hover:bg-gray-700'"
             >
-              <div class="flex flex-col">
-                <span class="font-bold text-[14px] text-yellow-300 flex items-center gap-2 line-clamp-1 h-6 pr-2">
-                  <span>{{ item.item.type === 'box' ? '📦' : '🎁' }}</span> {{ item.item.name }}
+              <div class="flex flex-col min-w-0">
+                <span class="font-bold text-[13px] text-yellow-300 truncate flex items-center gap-1">
+                  {{ inv.item?.type === 'box' ? '📦' : '🎁' }} {{ inv.item?.name }}
                 </span>
-                <span class="text-[11px] uppercase tracking-wider text-gray-400 font-semibold mt-1">Giá bán: ${{ item.item.sellPrice }} | Sức chứa: {{ 32 / item.item.volume }}</span>
+                <span class="text-[10px] text-gray-400 mt-0.5">
+                  SL/Tầng: {{ inv.item?.type === 'box' ? '4' : '32' }}
+                </span>
               </div>
-              <div class="bg-gray-950 text-green-400 px-3 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold">
-                x{{ item.quantity }}
+              <div class="bg-gray-950 text-green-400 px-2 py-0.5 rounded text-sm font-mono border border-gray-700 ml-2 shrink-0">
+                x{{ inv.quantity }}
               </div>
             </div>
           </div>
-          
-          <div v-if="selectedItemId" class="absolute bottom-4 left-4 right-4 bg-gray-800 border border-gray-600 p-3 rounded-xl shadow-xl z-10 flex flex-col gap-2">
-             <div class="text-xs text-gray-400 text-center font-medium">Thao tác nhanh</div>
-             <button @click="gameStore.autoFillShelf(selectedItemId)" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold py-2.5 rounded-lg shadow uppercase tracking-wider transition-transform active:scale-95">
-               Điền Tất Cả Lên Kệ
-             </button>
+
+          <div v-if="selectedItemId" class="mt-3 pt-3 border-t border-gray-700">
+            <p class="text-[11px] text-indigo-300 text-center mb-2">
+              ✅ Đang chọn: <br><strong class="text-yellow-300">{{ STOCK_ITEMS[selectedItemId]?.name }}</strong>
+            </p>
+            <p class="text-[10px] text-gray-500 text-center italic">
+              Shift+Click vào tầng để điền đầy
+            </p>
           </div>
         </div>
 
-        <!-- Right: Shelf Grid -->
-        <div class="w-2/3 p-6 flex flex-col bg-gray-900">
-          <div class="flex justify-between items-center mb-4">
-            <div>
-              <h3 class="text-lg font-bold text-gray-200 flex items-center gap-2"><span>🗄️</span> Lưới Kệ (48 Slots)</h3>
-              <p class="text-[11px] text-gray-400 mt-1 bg-gray-800 inline-block px-2 py-0.5 rounded border border-gray-700">Mẹo: Chọn Pack bên trái, Shift+Click vào ô trống để tự điền hàng loạt.</p>
-            </div>
-            <button @click="gameStore.clearEntireShelf()" class="bg-red-900/60 hover:bg-red-700 text-red-200 text-xs font-bold px-4 py-2 uppercase tracking-wider rounded shadow transition-colors border border-red-700/50">
-              Rút tất cả về Kho
-            </button>
-          </div>
+        <!-- Right: Shelf Tiers -->
+        <div class="flex-grow p-6 flex flex-col gap-4 overflow-y-auto custom-scroll">
+          <p class="text-[11px] text-gray-400 italic shrink-0">Mẹo: Chọn hàng bên trái → Click vào Tầng để đặt từng cái, hoặc <kbd class="bg-gray-800 px-1 rounded text-gray-300">Shift</kbd>+Click để điền đầy tầng.</p>
 
-          <!-- Grid slots -->
-          <div class="grid grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2 overflow-y-auto custom-scroll pr-2 pb-4">
-            <div 
-              v-for="(slot, index) in activeShelf.slots" 
-              :key="index"
-              class="relative w-full aspect-[2/3] rounded-md border-2 overflow-hidden cursor-pointer group flex flex-col items-center justify-center transition-all shadow-sm shrink-0"
-              :class="slot.itemId ? 'bg-gradient-to-b from-blue-500 to-indigo-800 border-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'border-gray-700 border-dashed hover:border-indigo-400/50 hover:bg-indigo-900/20 bg-gray-800/30'"
-              @click="handleSlotClickWithShift($event, index)"
+          <!-- 3 Tiers -->
+          <div
+            v-for="(tier, tierIdx) in activeShelf.tiers"
+            :key="tierIdx"
+            class="rounded-xl border-2 overflow-hidden shrink-0 transition-all"
+            :class="{
+              'border-indigo-500/70 shadow-[0_0_20px_rgba(99,102,241,0.2)]': selectedItemId && canPlaceInTier(tierIdx),
+              'border-gray-700/50': !selectedItemId || !canPlaceInTier(tierIdx),
+              'border-red-900/50': selectedItemId && !canPlaceInTier(tierIdx) && tier.itemId !== null,
+            }"
+          >
+            <!-- Tier Header -->
+            <div
+              class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 cursor-pointer group"
+              @click="handleTierClick(tierIdx, $event)"
             >
-               <!-- Delete button if filled -->
-               <button 
-                 v-if="slot.itemId" 
-                 @click.stop="clearSlot(index)"
-                 class="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-600 border-2 border-white text-white rounded-full flex items-center justify-center font-bold text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:scale-110 shadow-lg"
-                 title="Thu về kho"
-               >✕</button>
+              <div class="flex items-center gap-3">
+                <span class="text-xs font-black text-gray-400 uppercase tracking-widest">Tầng {{ tierIdx + 1 }}</span>
 
-               <div v-if="slot.itemId && gameStore.shopItems[slot.itemId]" class="text-center w-full p-0.5 flex flex-col h-full justify-between items-center opacity-95 group-hover:opacity-100 py-1.5">
-                 <div class="w-full px-1">
-                   <div class="w-full bg-black/50 rounded-full h-1.5 flex overflow-hidden border border-black/30">
-                     <div class="bg-yellow-400 h-full" :style="{ width: `${slot.quantity * gameStore.shopItems[slot.itemId].volume / 32 * 100}%` }"></div>
-                   </div>
-                 </div>
-                 <div class="text-3xl leading-none drop-shadow-md">
-                   {{ gameStore.shopItems[slot.itemId].type === 'box' ? '📦' : '🎁' }}
-                 </div>
-                 <div class="text-[10px] font-bold bg-gray-950 px-2 py-0.5 rounded shadow-inner border border-gray-600 text-yellow-400 tracking-widest mt-1">
-                   x{{ slot.quantity }}
-                 </div>
-               </div>
-               <div v-else class="text-gray-600 font-black opacity-30 text-xs">
-                 {{ index + 1 }}
-               </div>
+                <!-- Tier status / item info -->
+                <div v-if="tier.itemId" class="flex items-center gap-2">
+                  <span class="text-sm">{{ STOCK_ITEMS[tier.itemId]?.type === 'box' ? '📦' : '🎁' }}</span>
+                  <span class="text-xs font-bold text-white">{{ STOCK_ITEMS[tier.itemId]?.name }}</span>
+                  <span class="text-xs text-gray-400">{{ tier.slots.length }}/{{ tier.maxSlots }}</span>
+                  <!-- Fill bar -->
+                  <div class="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-yellow-400 transition-all" :style="{ width: `${tierFillPct(tierIdx)}%` }"></div>
+                  </div>
+                </div>
+                <span v-else class="text-xs text-gray-500 italic">[ Tầng trống – Click để đặt hàng ]</span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <span v-if="selectedItemId && canPlaceInTier(tierIdx)" class="text-[10px] text-indigo-300 font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+                  Click để đặt · Shift để điền đầy
+                </span>
+                <button
+                  v-if="tier.itemId"
+                  @click.stop="clearTier(tierIdx)"
+                  class="bg-red-800/50 hover:bg-red-600 text-red-300 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider transition-colors border border-red-700/50"
+                >
+                  Rút hết
+                </button>
+              </div>
+            </div>
+
+            <!-- Tier Content: Pack Grid -->
+            <div class="bg-gray-950/50 p-3 min-h-[80px] flex flex-col justify-center">
+              <!-- Empty hint -->
+              <div v-if="!tier.itemId" class="flex justify-center items-center h-16 text-gray-700 text-sm italic">
+                — trống —
+              </div>
+
+              <!-- Pack tier: compact vertical-stacking grid, 4 columns -->
+              <div v-else-if="STOCK_ITEMS[tier.itemId]?.type === 'pack'"
+                class="grid gap-[3px]"
+                style="grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(8, auto);"
+              >
+                <div
+                  v-for="n in tier.maxSlots"
+                  :key="n"
+                  class="rounded-sm border flex items-center justify-center transition-colors"
+                  :class="n <= tier.slots.length
+                    ? 'bg-gradient-to-b from-blue-500 to-indigo-700 border-indigo-400/60'
+                    : 'bg-gray-800/50 border-gray-700/30 border-dashed'"
+                  style="height: 22px;"
+                >
+                  <span v-if="n <= tier.slots.length" class="text-[10px] leading-none">🎁</span>
+                  <span v-else class="text-gray-700 text-[8px]">·</span>
+                </div>
+              </div>
+
+              <!-- Box tier: 4 large slots -->
+              <div v-else-if="STOCK_ITEMS[tier.itemId]?.type === 'box'"
+                class="grid grid-cols-4 gap-3"
+              >
+                <div
+                  v-for="n in tier.maxSlots"
+                  :key="n"
+                  class="rounded-lg border-2 flex flex-col items-center justify-center py-3 transition-colors"
+                  :class="n <= tier.slots.length
+                    ? 'bg-gradient-to-b from-orange-500/30 to-yellow-600/30 border-yellow-500/60 shadow-inner'
+                    : 'bg-gray-800/30 border-gray-700/30 border-dashed'"
+                  style="height: 80px;"
+                >
+                  <span v-if="n <= tier.slots.length" class="text-3xl">📦</span>
+                  <span v-else class="text-gray-700 text-xl">·</span>
+                </div>
+              </div>
             </div>
           </div>
+
         </div>
-        
       </div>
     </div>
   </div>

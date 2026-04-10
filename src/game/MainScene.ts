@@ -173,14 +173,15 @@ export default class MainScene extends Phaser.Scene {
     for (const [id, textObj] of Object.entries(this.shelfTexts)) {
        const shelfData = store.placedShelves[id as 'shelf1' | 'shelf2']
        if (shelfData) {
-         const filledSlots = shelfData.slots.filter(s => s.itemId !== null && s.quantity > 0)
-         if (filledSlots.length > 0) {
-           textObj.setText(`🏷️ Hàng: ${filledSlots.length}/${shelfData.slots.length}`)
+         const totalItems = shelfData.tiers.reduce((sum, t) => sum + t.slots.length, 0)
+         if (totalItems > 0) {
+           textObj.setText(`🏷️ ${totalItems} món`)
          } else {
            textObj.setText('🪹 Trống')
          }
        }
     }
+
 
     // Player di chuyển
     this.player.setVelocity(0)
@@ -259,9 +260,8 @@ export default class MainScene extends Phaser.Scene {
             
             const store = useGameStore()
             let foundShelfId: 'shelf1'|'shelf2'|null = null
-            // Check if shelf 1 or shelf 2 has items
-            if (store.placedShelves.shelf1 && store.placedShelves.shelf1.slots.some(s => s.itemId !== null && s.quantity > 0)) foundShelfId = 'shelf1'
-            else if (store.placedShelves.shelf2 && store.placedShelves.shelf2.slots.some(s => s.itemId !== null && s.quantity > 0)) foundShelfId = 'shelf2'
+            if (store.placedShelves.shelf1?.tiers.some(t => t.itemId && t.slots.length > 0)) foundShelfId = 'shelf1'
+            else if (store.placedShelves.shelf2?.tiers.some(t => t.itemId && t.slots.length > 0)) foundShelfId = 'shelf2'
 
             if (foundShelfId) {
               customer.state = 'SEEK_ITEM'
