@@ -53,6 +53,10 @@ const inventoryDetails = computed(() => {
     }
   }).sort((a, b) => b.quantity - a.quantity)
 })
+
+// Minimization state
+const isShopManagerMinimized = ref(false)
+const isInventoryMinimized = ref(false)
 </script>
 
 <template>
@@ -71,92 +75,83 @@ const inventoryDetails = computed(() => {
     </div>
 
     <!-- Top-left: Balance & Stats -->
-    <div class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-sm">
-      <h2 class="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent mb-3">Shop Manager</h2>
-      <div class="flex items-center justify-between mb-4 bg-gray-800/80 px-4 py-3 rounded-xl border border-gray-700/50">
-        <span class="text-sm font-medium text-gray-300">Balance</span>
-        <span class="text-2xl font-black text-yellow-500">${{ gameStore.money.toFixed(2) }}</span>
-      </div>
+    <div class="pointer-events-auto grid items-start justify-items-start">
+      <Transition name="panel-slide" mode="out-in">
+        <div v-if="!isShopManagerMinimized" key="panel" class="col-start-1 row-start-1 bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-sm relative">
+          <button @click="isShopManagerMinimized = true" class="absolute -top-2 -right-2 bg-gray-800 hover:bg-gray-700 text-gray-400 p-1.5 rounded-full border border-gray-700 shadow-lg transition-transform hover:scale-110">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M20 12H4" /></svg>
+          </button>
+          
+          <h2 class="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent mb-3">Shop Manager</h2>
+          <div class="flex items-center justify-between mb-4 bg-gray-800/80 px-4 py-3 rounded-xl border border-gray-700/50">
+            <span class="text-sm font-medium text-gray-300">Balance</span>
+            <span class="text-2xl font-black text-yellow-500">${{ gameStore.money.toFixed(2) }}</span>
+          </div>
 
-      <!-- Level & XP Bar -->
-      <div class="mb-5">
-        <div class="flex justify-between items-end mb-1">
-          <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Level {{ gameStore.level }}</span>
-          <span class="text-[10px] font-mono text-gray-500">{{ gameStore.currentExp }} / {{ gameStore.requiredExp }} XP</span>
-        </div>
-        <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700/50">
-          <div 
-            class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-500 ease-out"
-            :style="{ width: `${(gameStore.currentExp / gameStore.requiredExp) * 100}%` }"
-          ></div>
-        </div>
-      </div>
-      
-      <div class="flex gap-2">
-        <button 
-          @click="gameStore.showOnlineShop = true" 
-          class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
-        >
-          <span class="text-xl">💻</span> ONLINE SHOP
-        </button>
-        <button 
-          @click="gameStore.showBuildMenu = true" 
-          class="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/10 transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
-          title="Mở menu xây dựng"
-        >
-          <span class="text-xl">🔨</span>
-        </button>
-      </div>
+          <div class="mb-5">
+            <div class="flex justify-between items-end mb-1">
+              <span class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Level {{ gameStore.level }}</span>
+              <span class="text-[10px] font-mono text-gray-500">{{ gameStore.currentExp }} / {{ gameStore.requiredExp }} XP</span>
+            </div>
+            <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700/50">
+              <div class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-500 ease-out" :style="{ width: `${(gameStore.currentExp / gameStore.requiredExp) * 100}%` }"></div>
+            </div>
+          </div>
+          
+          <div class="flex gap-2">
+            <button @click="gameStore.showOnlineShop = true" class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 font-black italic">
+              <span class="text-xl not-italic">💻</span> ONLINE SHOP
+            </button>
+            <button @click="gameStore.showBuildMenu = true" class="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/10 transform hover:-translate-y-0.5 flex items-center justify-center gap-2" title="Mở menu xây dựng">
+              <span class="text-xl">🔨</span>
+            </button>
+          </div>
 
-      <!-- Khách đợi thanh toán -->
-      <div v-if="gameStore.waitingCustomers > 0" class="mt-5 bg-orange-900/50 border border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] text-orange-200 px-4 py-3 rounded-xl animate-pulse flex justify-between items-center">
-        <span class="font-bold flex items-center gap-2">⏱ Khách chờ: {{ gameStore.waitingCustomers }}</span>
-        <button @click="gameStore.serveCustomer()" class="bg-orange-500 hover:bg-orange-600 text-white font-bold px-3 py-1.5 rounded-lg shadow-lg">
-          Thanh toán
+          <div v-if="gameStore.waitingCustomers > 0" class="mt-5 bg-orange-900/50 border border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] text-orange-200 px-4 py-3 rounded-xl animate-pulse flex justify-between items-center">
+            <span class="font-bold flex items-center gap-2">⏱ Khách chờ: {{ gameStore.waitingCustomers }}</span>
+            <button @click="gameStore.serveCustomer()" class="bg-orange-500 hover:bg-orange-600 text-white font-bold px-3 py-1.5 rounded-lg shadow-lg">Thanh toán</button>
+          </div>
+        </div>
+        <button v-else key="button" @click="isShopManagerMinimized = false" class="col-start-1 row-start-1 bg-gray-900/90 backdrop-blur p-4 rounded-full border-2 border-indigo-500/50 shadow-2xl hover:scale-110 transition-transform flex items-center justify-center group relative" title="Mở Shop Manager">
+          <span class="text-2xl group-hover:drop-shadow-[0_0_8px_rgba(99,102,241,0.8)]">💼</span>
+          <div v-if="gameStore.waitingCustomers > 0" class="absolute -top-1 -right-1 bg-orange-500 text-white w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center border-2 border-gray-900 animate-bounce">!</div>
         </button>
-      </div>
+      </Transition>
     </div>
 
     <!-- Bottom-right: Inventory List -->
-    <div class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-md self-end w-full max-h-[50%] flex flex-col mt-auto">
-      <div class="flex justify-between items-center mb-4 border-b border-gray-700/50 pb-3">
-        <h3 class="text-lg font-bold text-gray-100 flex items-center gap-2">
-          <span>📦</span> Inventory
-        </h3>
-        <button @click="gameStore.showBinderMenu = true" class="text-xs bg-indigo-600 hover:bg-indigo-500 font-bold px-3 py-1.5 rounded-lg text-white shadow shadow-indigo-500/30 flex items-center gap-1 transition-colors">
-          <span>📔</span> Binder
-        </button>
-      </div>
-      
-      <p class="text-[11px] text-gray-400 mb-2 italic">Mẹo: Hãy lại gần Kệ rỗng và ấn phím E để xếp đồ!</p>
-      
-      <div v-if="inventoryDetails.length === 0" class="text-gray-400 italic text-sm text-center py-8">
-        Kho đồ trống rỗng. Hãy mua một Pack!
-      </div>
-      
-      <div v-else class="space-y-2 overflow-y-auto pr-2 custom-scroll">
-        <div 
-          v-for="item in inventoryDetails" :key="item.id"
-          class="flex justify-between items-center bg-gray-800/60 p-3 rounded-xl border border-gray-700/30 hover:bg-gray-700/50 transition-colors"
-        >
-          <div class="flex flex-col">
-            <span class="font-bold text-[15px] text-gray-200 flex items-center gap-2 line-clamp-1 h-6 pr-2">
-              <span>{{ item.type === 'box' ? '📦' : '🎁' }}</span> {{ item.name }}
-            </span>
+    <div class="pointer-events-auto mt-auto grid items-end justify-items-end">
+      <Transition name="panel-slide-up" mode="out-in">
+        <div v-if="!isInventoryMinimized" key="panel" class="col-start-1 row-start-1 bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-md w-full max-h-[50vh] flex flex-col relative">
+          <button @click="isInventoryMinimized = true" class="absolute -top-2 -left-2 bg-gray-800 hover:bg-gray-700 text-gray-400 p-1.5 rounded-full border border-gray-700 shadow-lg transition-transform hover:scale-110">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M20 12H4" /></svg>
+          </button>
+          
+          <div class="flex justify-between items-center mb-4 border-b border-gray-700/50 pb-3">
+            <h3 class="text-lg font-bold text-gray-100 flex items-center gap-2"><span>📦</span> Inventory</h3>
+            <button @click="gameStore.showBinderMenu = true" class="text-xs bg-indigo-600 hover:bg-indigo-500 font-bold px-3 py-1.5 rounded-lg text-white shadow shadow-indigo-500/30 flex items-center gap-1 transition-colors"><span>📔</span> Binder</button>
           </div>
-          <div class="flex items-center gap-2">
-            <button v-if="item.type === 'box'" @click="gameStore.unboxItem(item.id)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-2.5 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">
-              Xé Hộp
-            </button>
-            <button v-if="item.type === 'pack'" @click="gameStore.tearPack(item.id)" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-1 px-2.5 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">
-              Mở Pack
-            </button>
-            <div class="bg-gray-900 text-gray-200 px-2 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold min-w-[36px] text-center">
-              x{{ item.quantity }}
+          
+          <p class="text-[11px] text-gray-400 mb-2 italic">Mẹo: Hãy lại gần Kệ rỗng và ấn phím E để xếp đồ!</p>
+          <div v-if="inventoryDetails.length === 0" class="text-gray-400 italic text-sm text-center py-8">Kho đồ trống rỗng. Hãy mua một Pack!</div>
+          <div v-else class="space-y-2 overflow-y-auto pr-2 custom-scroll">
+            <div v-for="item in inventoryDetails" :key="item.id" class="flex justify-between items-center bg-gray-800/60 p-3 rounded-xl border border-gray-700/30 hover:bg-gray-700/50 transition-colors">
+              <div class="flex flex-col"><span class="font-bold text-[15px] text-gray-200 flex items-center gap-2 line-clamp-1 h-6 pr-2"><span>{{ item.type === 'box' ? '📦' : '🎁' }}</span> {{ item.name }}</span></div>
+              <div class="flex items-center gap-2">
+                <button v-if="item.type === 'box'" @click="gameStore.unboxItem(item.id)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-2.5 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">Xé Hộp</button>
+                <button v-if="item.type === 'pack'" @click="gameStore.tearPack(item.id)" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-1 px-2.5 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">Mở Pack</button>
+                <div class="bg-gray-900 text-gray-200 px-2 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold min-w-[36px] text-center">x{{ item.quantity }}</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+        <button v-else key="button" @click="isInventoryMinimized = false" class="col-start-1 row-start-1 bg-gray-900/90 backdrop-blur p-4 rounded-full border-2 border-indigo-500/50 shadow-2xl hover:scale-110 transition-transform flex items-center justify-center group relative" title="Mở Inventory">
+          <span class="text-2xl group-hover:drop-shadow-[0_0_8px_rgba(99,102,241,0.8)]">📦</span>
+          <div v-if="inventoryDetails.length > 0" class="absolute -top-1 -left-1 bg-indigo-500 text-white w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center border-2 border-gray-900">
+            {{ inventoryDetails.length }}
+          </div>
+        </button>
+      </Transition>
     </div>
 
     <!-- Level Up Notification Overlay -->
@@ -187,6 +182,22 @@ const inventoryDetails = computed(() => {
 .level-up-leave-to {
   opacity: 0;
   transform: translate(-50%, -150%) scale(0.8);
+}
+
+/* Panel Animations */
+.panel-slide-enter-active, .panel-slide-leave-active,
+.panel-slide-up-enter-active, .panel-slide-up-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.panel-slide-enter-from, .panel-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+.panel-slide-up-enter-from, .panel-slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(30px);
 }
 
 /* Custom scrollbar for better visual */

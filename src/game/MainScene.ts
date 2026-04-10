@@ -5,6 +5,7 @@ import npcImg from '../assets/images/npc.svg'
 import shelfImg from '../assets/images/shelf.svg'
 import cashierImg from '../assets/images/cashier.svg'
 import { WORKERS, SPEED_TO_MS } from '../config/workerData'
+import { BASE_SHOP_WIDTH, BASE_SHOP_HEIGHT, EXPANSION_UNIT, getExpansionDimensions } from '../config/expansionData'
 
 type NPCState = 'SPAWN' | 'WANDER' | 'SEEK_ITEM' | 'INTERACT' | 'GO_CASHIER' | 'WAITING' | 'LEAVE'
 
@@ -30,6 +31,11 @@ export default class MainScene extends Phaser.Scene {
   private isPlacementValid: boolean = false
   private staffSprites: Map<string, Phaser.Physics.Arcade.Sprite> = new Map()
   private lastAutoCheckoutTime: number = 0
+  private floorGraphics!: Phaser.GameObjects.Graphics
+  private wallGraphics!: Phaser.GameObjects.Graphics
+  private outsideGraphics!: Phaser.GameObjects.Graphics
+  private doorLocation = { x: 0, y: 0 }
+  private shopBounds = { x: 0, y: 0, w: 0, h: 0 }
 
   private cursors!: {
     up: Phaser.Input.Keyboard.Key,
@@ -50,36 +56,45 @@ export default class MainScene extends Phaser.Scene {
   }
 
   create() {
-    this.cameras.main.setBackgroundColor('#2ecc71')
+    const gameStore = useGameStore()
+
+    // Phông nền ngoài shop
+    this.outsideGraphics = this.add.graphics()
+    this.floorGraphics = this.add.graphics()
+    this.wallGraphics = this.add.graphics()
 
     // Animations
     const anims = this.anims
-    anims.create({ key: 'player-down', frames: anims.generateFrameNumbers('player', { start: 0, end: 2 }), frameRate: 8, repeat: -1 })
-    anims.create({ key: 'player-left', frames: anims.generateFrameNumbers('player', { start: 3, end: 5 }), frameRate: 8, repeat: -1 })
-    anims.create({ key: 'player-right', frames: anims.generateFrameNumbers('player', { start: 6, end: 8 }), frameRate: 8, repeat: -1 })
-    anims.create({ key: 'player-up', frames: anims.generateFrameNumbers('player', { start: 9, end: 11 }), frameRate: 8, repeat: -1 })
+    if (!anims.exists('player-down')) {
+      anims.create({ key: 'player-down', frames: anims.generateFrameNumbers('player', { start: 0, end: 2 }), frameRate: 8, repeat: -1 })
+      anims.create({ key: 'player-left', frames: anims.generateFrameNumbers('player', { start: 3, end: 5 }), frameRate: 8, repeat: -1 })
+      anims.create({ key: 'player-right', frames: anims.generateFrameNumbers('player', { start: 6, end: 8 }), frameRate: 8, repeat: -1 })
+      anims.create({ key: 'player-up', frames: anims.generateFrameNumbers('player', { start: 9, end: 11 }), frameRate: 8, repeat: -1 })
 
-    anims.create({ key: 'npc-down', frames: anims.generateFrameNumbers('npc', { start: 0, end: 2 }), frameRate: 8, repeat: -1 })
-    anims.create({ key: 'npc-left', frames: anims.generateFrameNumbers('npc', { start: 3, end: 5 }), frameRate: 8, repeat: -1 })
-    anims.create({ key: 'npc-right', frames: anims.generateFrameNumbers('npc', { start: 6, end: 8 }), frameRate: 8, repeat: -1 })
-    anims.create({ key: 'npc-up', frames: anims.generateFrameNumbers('npc', { start: 9, end: 11 }), frameRate: 8, repeat: -1 })
+      anims.create({ key: 'npc-down', frames: anims.generateFrameNumbers('npc', { start: 0, end: 2 }), frameRate: 8, repeat: -1 })
+      anims.create({ key: 'npc-left', frames: anims.generateFrameNumbers('npc', { start: 3, end: 5 }), frameRate: 8, repeat: -1 })
+      anims.create({ key: 'npc-right', frames: anims.generateFrameNumbers('npc', { start: 6, end: 8 }), frameRate: 8, repeat: -1 })
+      anims.create({ key: 'npc-up', frames: anims.generateFrameNumbers('npc', { start: 9, end: 11 }), frameRate: 8, repeat: -1 })
+    }
 
     // Nhóm vật thể vật lý
     this.shelvesGroup = this.physics.add.staticGroup()
     this.cashierGroup = this.physics.add.staticGroup()
 
+    // Tạo Quầy thu ngân (Cashier) - Vị trí sẽ được cập nhật trong refreshEnvironment
+    this.cashierDesk = this.cashierGroup.create(600, 150, 'cashier') as Phaser.Physics.Arcade.Sprite
+    this.cashierDesk.setData('id', 'cashier')
+
+    // Khởi tạo môi trường shop & bounds
+    this.refreshEnvironment()
+
     // Render các kệ đã đặt từ Store
-    const store = useGameStore()
-    Object.values(store.placedShelves).forEach(shelfData => {
+    Object.values(gameStore.placedShelves).forEach(shelfData => {
       this.addShelfToScene(shelfData)
     })
 
-    // Tạo Quầy thu ngân (Cashier)
-    this.cashierDesk = this.cashierGroup.create(600, 180, 'cashier') as Phaser.Physics.Arcade.Sprite
-    this.cashierDesk.setData('id', 'cashier')
-
     // Player
-    this.player = this.physics.add.sprite(400, 300, 'player')
+    this.player = this.physics.add.sprite(this.shopBounds.x + 100, this.shopBounds.y + 100, 'player')
     this.player.setCollideWorldBounds(true)
 
     // Va chạm
@@ -95,11 +110,10 @@ export default class MainScene extends Phaser.Scene {
         right: Phaser.Input.Keyboard.KeyCodes.D
       }) as typeof this.cursors
       
-      // Phím tương tác 'E'
       this.keyE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E)
     }
 
-    // Spawn khách
+    // Spawn khách định kỳ
     this.time.addEvent({
       delay: 3000,
       callback: this.spawnCustomer,
@@ -107,41 +121,97 @@ export default class MainScene extends Phaser.Scene {
       loop: true
     })
 
-    // Lắng nghe thanh toán
-    const gameStore = useGameStore()
+    // Lắng nghe thay đổi store
     let lastWaitingCount = gameStore.waitingCustomers
+    let lastExpansionLevel = gameStore.expansionLevel
 
     gameStore.$subscribe((mutation, state) => {
+      // Check Expansion
+      if (state.expansionLevel !== lastExpansionLevel) {
+        this.refreshEnvironment()
+        lastExpansionLevel = state.expansionLevel
+      }
+
       if (state.waitingCustomers < lastWaitingCount) {
         if (this.cashierQueue.length > 0) {
           const servedCust = this.cashierQueue.shift()!
-          servedCust.sprite.destroy()
-          
-          const indexInCustomers = this.customers.indexOf(servedCust)
-          if (indexInCustomers !== -1) {
-            this.customers.splice(indexInCustomers, 1)
-          }
+          servedCust.state = 'LEAVE'
+          servedCust.targetX = this.doorLocation.x
+          servedCust.targetY = this.doorLocation.y + 50
         }
       }
       lastWaitingCount = state.waitingCustomers
     })
   }
 
+  private refreshEnvironment() {
+    const store = useGameStore()
+    const { extraW, extraH } = getExpansionDimensions(store.expansionLevel)
+    
+    const shopW = BASE_SHOP_WIDTH + extraW
+    const shopH = BASE_SHOP_HEIGHT + extraH
+    const startX = 100
+    const startY = 100
+    
+    this.shopBounds = { x: startX, y: startY, w: shopW, h: shopH }
+    this.doorLocation = { x: startX + shopW / 2, y: startY + shopH }
+
+    // World & Camera Bounds
+    const worldPad = 400
+    this.physics.world.setBounds(startX, startY, shopW, shopH)
+    this.cameras.main.setBounds(startX - worldPad, startY - worldPad, shopW + worldPad * 2, shopH + worldPad * 2)
+
+    // Vẽ Outside
+    this.outsideGraphics.clear()
+    this.outsideGraphics.fillStyle(0x1a1a1a, 1) // Dark street
+    this.outsideGraphics.fillRect(startX - worldPad, startY - worldPad, shopW + worldPad * 2, shopH + worldPad * 2)
+    
+    // Vẽ Floor
+    this.floorGraphics.clear()
+    this.floorGraphics.fillStyle(0x2c3e50, 1) // Slate floor
+    this.floorGraphics.fillRect(startX, startY, shopW, shopH)
+    
+    // Grid lines
+    this.floorGraphics.lineStyle(1, 0x34495e, 0.5)
+    for (let i = 0; i <= shopW; i += 40) {
+      this.floorGraphics.lineBetween(startX + i, startY, startX + i, startY + shopH)
+    }
+    for (let j = 0; j <= shopH; j += 40) {
+      this.floorGraphics.lineBetween(startX, startY + j, startX + shopW, startY + j)
+    }
+
+    // Walls
+    this.wallGraphics.clear()
+    this.wallGraphics.lineStyle(6, 0xffffff, 0.8)
+    this.wallGraphics.strokeRect(startX, startY, shopW, shopH)
+    
+    // Door gap (yellow line for now)
+    this.wallGraphics.lineStyle(8, 0xf1c40f, 1)
+    const doorWidth = 80
+    this.wallGraphics.lineBetween(this.doorLocation.x - doorWidth/2, this.doorLocation.y, this.doorLocation.x + doorWidth/2, this.doorLocation.y)
+    
+    if (this.cashierDesk) {
+      this.cashierDesk.setPosition(startX + shopW - 60, startY + 60)
+    }
+  }
+
   spawnCustomer() {
     if (useGameStore().shopState !== 'OPEN') return
     if (this.customers.length >= 10) return
 
-    const npcSprite = this.physics.add.sprite(400, 600, 'npc')
+    // Khách bắt đầu từ cửa
+    const npcSprite = this.physics.add.sprite(this.doorLocation.x, this.doorLocation.y + 50, 'npc')
     npcSprite.setCollideWorldBounds(true)
 
     this.customers.push({
       sprite: npcSprite,
       state: 'SPAWN',
-      timer: this.time.now + 1000,
-      targetX: 400,
-      targetY: 600,
+      timer: this.time.now + 500,
+      targetX: this.doorLocation.x,
+      targetY: this.doorLocation.y - 40, // Đi vào trong shop
       targetPrice: 0
     })
+    this.physics.moveTo(npcSprite, this.doorLocation.x, this.doorLocation.y - 40, 100)
   }
 
   update(time: number, delta: number) {
@@ -264,8 +334,8 @@ export default class MainScene extends Phaser.Scene {
         case 'SPAWN':
           if (time > customer.timer) {
             customer.state = 'WANDER'
-            customer.targetX = Phaser.Math.Between(100, 700)
-            customer.targetY = Phaser.Math.Between(300, 500)
+            customer.targetX = Phaser.Math.Between(this.shopBounds.x + 20, this.shopBounds.x + this.shopBounds.w - 20)
+            customer.targetY = Phaser.Math.Between(this.shopBounds.y + 20, this.shopBounds.y + this.shopBounds.h - 20)
             this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
           }
           break
@@ -291,8 +361,8 @@ export default class MainScene extends Phaser.Scene {
               customer.targetY = targetShelf.y + 30 // Đứng trước kệ
             } else {
               // Lượn tiếp nếu shop trống
-              customer.targetX = Phaser.Math.Between(100, 700)
-              customer.targetY = Phaser.Math.Between(300, 500)
+              customer.targetX = Phaser.Math.Between(this.shopBounds.x + 20, this.shopBounds.x + this.shopBounds.w - 20)
+              customer.targetY = Phaser.Math.Between(this.shopBounds.y + 20, this.shopBounds.y + this.shopBounds.h - 20)
             }
             this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
           }
@@ -333,8 +403,8 @@ export default class MainScene extends Phaser.Scene {
               this.cashierQueue.push(customer)
             } else {
               customer.state = 'WANDER'
-              customer.targetX = Phaser.Math.Between(100, 700)
-              customer.targetY = Phaser.Math.Between(300, 500)
+              customer.targetX = Phaser.Math.Between(this.shopBounds.x + 20, this.shopBounds.x + this.shopBounds.w - 20)
+              customer.targetY = Phaser.Math.Between(this.shopBounds.y + 20, this.shopBounds.y + this.shopBounds.h - 20)
             }
             this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
           }

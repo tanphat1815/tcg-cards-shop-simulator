@@ -3,6 +3,7 @@ import cardsData from '../assets/data/cards.json'
 import { getRequiredExp, XP_REWARDS } from '../config/leveling'
 import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
 import { WORKERS, SPEED_TO_MS } from '../config/workerData'
+import { EXPANSIONS_LOT_A } from '../config/expansionData'
 
 export interface CardData {
   id: string
@@ -81,7 +82,8 @@ export const useGameStore = defineStore('game', {
     // Missing state properties causing TS errors
     currentDay: 1,
     timeInMinutes: 480, // 8:00 AM
-    showEndDayModal: false
+    showEndDayModal: false,
+    expansionLevel: 0,
   }),
   getters: {
     requiredExp: (state) => getRequiredExp(state.level),
@@ -112,6 +114,7 @@ export const useGameStore = defineStore('game', {
           this.level = parsed.level ?? 1
           this.currentExp = parsed.currentExp ?? 0
           this.hiredWorkers = parsed.hiredWorkers ?? []
+          this.expansionLevel = parsed.expansionLevel ?? 0
         } catch (e) {
           console.error("Lỗi khi đọc file save", e)
         }
@@ -426,14 +429,30 @@ export const useGameStore = defineStore('game', {
         if (data) totalSalary += data.salary
       })
       
-      // We allow negative money but maybe better to alert?
-      this.money -= totalSalary
-      
+      // Deduct rent
+      let totalRent = 50 // Base rent
+      for (let i = 0; i < this.expansionLevel; i++) {
+        totalRent += EXPANSIONS_LOT_A[i].rentIncrease
+      }
+      this.money -= totalRent
+
       this.currentDay++
       this.timeInMinutes = 480 // 8:00 AM
       this.shopState = 'OPEN'
       this.showEndDayModal = false
       this.dailyStats = { revenue: 0, customersServed: 0, itemsSold: 0 }
+    },
+    buyExpansion() {
+      const nextId = this.expansionLevel + 1
+      const config = EXPANSIONS_LOT_A.find(e => e.id === nextId)
+      if (!config) return false // Max level
+      
+      if (this.money < config.cost) return false
+      if (this.level < config.requiredLevel) return false
+      
+      this.money -= config.cost
+      this.expansionLevel = nextId
+      return true
     }
   }
 })

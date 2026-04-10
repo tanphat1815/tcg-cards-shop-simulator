@@ -4,8 +4,9 @@ import { useGameStore } from '../stores/gameStore'
 import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
 
 const gameStore = useGameStore()
-const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF'>('STOCK')
+const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF' | 'RENO'>('STOCK')
 import { WORKERS } from '../config/workerData'
+import { EXPANSIONS_LOT_A } from '../config/expansionData'
 
 const purchaseStock = (id: string, price: number) => {
   if (gameStore.money < price) {
@@ -33,6 +34,13 @@ const hireWorker = (workerId: string) => {
   const success = gameStore.hireWorker(workerId)
   if (!success) {
     alert("Không đủ tiền hoặc Level chưa đạt yêu cầu!")
+  }
+}
+
+const purchaseExpansion = () => {
+  const success = gameStore.buyExpansion()
+  if (!success) {
+    alert("Không đủ tiền hoặc Level chưa đạt yêu cầu mở rộng!")
   }
 }
 
@@ -94,6 +102,13 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
         >
           👨‍💼 Nhân Sự (Staff)
         </button>
+        <button 
+          @click="activeTab = 'RENO'"
+          class="px-6 py-3 font-bold uppercase tracking-wider rounded-t-lg transition-colors border-x border-t border-transparent"
+          :class="activeTab === 'RENO' ? 'bg-white text-indigo-700 border-gray-300 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]' : 'text-gray-500 hover:bg-gray-200'"
+        >
+          🛠️ Cải Tạo (Reno)
+        </button>
       </div>
 
       <!-- Main Content -->
@@ -146,6 +161,54 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                 :class="gameStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
               >
                 Nhập Ngay (${{ item.buyPrice }})
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Furniture Tab -->
+        <div v-if="activeTab === 'FURNITURE'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div 
+            v-for="item in Object.values(FURNITURE_ITEMS)" 
+            :key="item.id"
+            class="bg-white rounded-xl overflow-hidden shadow-md border border-gray-200 relative group flex flex-col"
+          >
+            <!-- Lock Overlay if Level not met -->
+            <div v-if="gameStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
+              <span class="text-4xl mb-2">🔒</span>
+              <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-sm shadow-xl border-2 border-red-800">
+                Unlock at Level {{ item.requiredLevel }}
+              </div>
+            </div>
+
+            <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': gameStore.level < item.requiredLevel }">
+               <div class="text-[80px] drop-shadow-xl transform group-hover:scale-110 transition-transform">
+                 🪑
+               </div>
+            </div>
+            <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': gameStore.level < item.requiredLevel }">
+              <div class="flex justify-between items-start mb-2">
+                <h3 class="font-bold text-gray-900 text-lg leading-tight">{{ item.name }}</h3>
+                <span v-if="gameStore.purchasedFurniture[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
+                  Kho: {{ gameStore.purchasedFurniture[item.id] }}
+                </span>
+              </div>
+              <p class="text-xs text-gray-500 mb-4 line-clamp-2 h-8">{{ item.description }}</p>
+              
+              <div class="mt-auto bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
+                 <div class="flex justify-between text-sm mb-1">
+                   <span class="text-gray-500">Giá mua:</span>
+                   <span class="font-bold text-gray-800">${{ item.buyPrice }}</span>
+                 </div>
+              </div>
+
+              <button 
+                :disabled="gameStore.level < item.requiredLevel"
+                @click="purchaseFurniture(item.id, item.buyPrice)"
+                class="w-full font-bold py-3 px-4 rounded-xl shadow uppercase tracking-wider transition-all active:scale-95"
+                :class="gameStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+              >
+                Mua Ngay (${{ item.buyPrice }})
               </button>
             </div>
           </div>
@@ -243,6 +306,86 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
           </div>
         </div>
 
+        <!-- RENO BIGG Tab -->
+        <div v-if="activeTab === 'RENO'" class="flex flex-col gap-6">
+          <div class="bg-gradient-to-r from-orange-100 to-amber-50 p-8 rounded-2xl border border-orange-200 shadow-sm flex items-center justify-between">
+            <div>
+              <h2 class="text-4xl font-black text-orange-600 italic tracking-tighter flex items-center gap-4">
+                RENO <span class="bg-orange-600 text-white px-3 py-1 rounded italic not-italic text-2xl">BIGG</span>
+              </h2>
+              <p class="text-orange-900/60 font-bold uppercase text-xs tracking-widest mt-2">Dịch vụ đập tường & nới rộng mặt bằng chuyên nghiệp</p>
+            </div>
+            <div class="text-right">
+              <span class="block text-[10px] text-gray-500 font-bold uppercase">Expansion Status</span>
+              <span class="text-2xl font-black text-gray-800">LEVEL {{ gameStore.expansionLevel }}</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div 
+              v-for="exp in EXPANSIONS_LOT_A" 
+              :key="exp.id"
+              class="bg-white rounded-2xl overflow-hidden shadow-sm border-2 flex flex-col relative transition-all group"
+              :class="[
+                gameStore.expansionLevel >= exp.id ? 'border-green-500/30 bg-green-50/10' : 'border-gray-100',
+                gameStore.expansionLevel + 1 === exp.id ? 'ring-2 ring-orange-500/20 scale-[1.02] shadow-xl z-10' : ''
+              ]"
+            >
+              <!-- Purchased Overlay -->
+              <div v-if="gameStore.expansionLevel >= exp.id" class="absolute inset-0 bg-green-500/5 backdrop-blur-[1px] z-10 pointer-events-none flex items-center justify-center">
+                <div class="bg-green-500 text-white p-2 rounded-full shadow-lg transform -rotate-12 border-2 border-white">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
+                </div>
+              </div>
+
+              <!-- Level Lock -->
+              <div v-if="gameStore.level < exp.requiredLevel && gameStore.expansionLevel < exp.id" class="absolute inset-0 bg-gray-900/40 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center">
+                 <span class="text-3xl mb-1">🔒</span>
+                 <p class="text-white font-black text-[10px] bg-red-600 px-3 py-1 rounded-full uppercase">Level {{ exp.requiredLevel }}</p>
+              </div>
+
+              <div class="h-40 bg-gray-100 flex items-center justify-center p-6 border-b border-gray-100">
+                <div class="text-[90px] drop-shadow-lg group-hover:rotate-12 transition-transform duration-300">🔨</div>
+              </div>
+
+              <div class="p-5 flex-grow flex flex-col">
+                <h3 class="font-black text-gray-800 text-sm uppercase tracking-tight mb-4">Shop Expansion {{ exp.id }}</h3>
+                
+                <div class="space-y-2 mb-6">
+                  <div class="flex justify-between text-xs font-bold">
+                    <span class="text-gray-400">Chi phí:</span>
+                    <span class="text-gray-800">${{ exp.cost }}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-bold">
+                    <span class="text-gray-400">Tăng diện tích:</span>
+                    <span class="text-blue-600">+1 Unit</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-bold">
+                    <span class="text-gray-400">Thuế/Ngày:</span>
+                    <span class="text-red-500">+${{ exp.rentIncrease }}</span>
+                  </div>
+                </div>
+
+                <button 
+                  v-if="gameStore.expansionLevel < exp.id"
+                  @click="purchaseExpansion"
+                  :disabled="gameStore.expansionLevel + 1 !== exp.id || gameStore.money < exp.cost || gameStore.level < exp.requiredLevel"
+                  class="w-full font-black py-3 rounded-xl transition-all shadow-md active:scale-95 text-xs tracking-widest uppercase"
+                  :class="[
+                    gameStore.expansionLevel + 1 === exp.id && gameStore.money >= exp.cost && gameStore.level >= exp.requiredLevel
+                      ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  ]"
+                >
+                  {{ gameStore.expansionLevel + 1 === exp.id ? 'Mở Rộng Ngay' : 'Đang Khóa' }}
+                </button>
+                <div v-else class="text-center font-black text-green-600 uppercase text-xs tracking-widest py-3">
+                  Đã Hoàn Thành
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>
