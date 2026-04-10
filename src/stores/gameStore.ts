@@ -21,12 +21,18 @@ export interface ShelfTier {
 
 export interface ShelfData {
   id: string;
+  furnitureId: string; // ID from FURNITURE_ITEMS
+  x: number;
+  y: number;
   tiers: ShelfTier[]; // 3 tiers
 }
 
 const createEmptyTier = (): ShelfTier => ({ itemId: null, slots: [], maxSlots: 0 })
-const createShelf = (id: string): ShelfData => ({
+const createShelf = (id: string, furnitureId: string, x: number, y: number): ShelfData => ({
   id,
+  furnitureId,
+  x,
+  y,
   tiers: [createEmptyTier(), createEmptyTier(), createEmptyTier()]
 })
 
@@ -35,12 +41,13 @@ export const useGameStore = defineStore('game', {
     money: 1000,
     shopInventory: {} as Record<string, number>, // itemId -> quantity
     personalBinder: {} as Record<string, number>, // cardId -> quantity
-    placedShelves: {
-      shelf1: createShelf('shelf1'),
-      shelf2: createShelf('shelf2')
-    } as Record<string, ShelfData>,
+    placedShelves: {} as Record<string, ShelfData>,
     activeShelfId: null as string | null,
     showShelfMenu: false,
+    showBinderMenu: false,
+    showBuildMenu: false,
+    isBuildMode: false,
+    buildItemId: null as string | null,
     shopState: 'CLOSED' as 'OPEN' | 'CLOSED',
     waitingCustomers: 0,
     waitingQueue: [] as number[],
@@ -75,13 +82,13 @@ export const useGameStore = defineStore('game', {
           this.personalBinder = parsed.personalBinder ?? {}
           this.purchasedFurniture = parsed.purchasedFurniture ?? {}
           if (parsed.placedShelves) {
-            // Wipe old save format (slots-based) to apply new tier-based model
-            const shelf1 = parsed.placedShelves['shelf1']
-            const hasTiers = shelf1 && Array.isArray(shelf1.tiers)
-            if (hasTiers) {
-              this.placedShelves = parsed.placedShelves
+            // Check for legacy array format or missing properties
+            const firstShelf = Object.values(parsed.placedShelves)[0] as any
+            if (firstShelf && Array.isArray(firstShelf.tiers) && typeof firstShelf.x !== 'undefined') {
+               this.placedShelves = parsed.placedShelves
             } else {
-              console.warn('Old save (slots[]) detected — wiping shelves for new tier model.')
+               console.warn('Incompatible shelf data detected. Resetting shelves for Build Mode.')
+               this.placedShelves = {}
             }
           }
           this.currentDay = parsed.currentDay ?? 1
@@ -326,6 +333,34 @@ export const useGameStore = defineStore('game', {
     closePackOpening() {
       this.isOpeningPack = false
       this.currentPack = []
+    },
+    // --- Build Mode Actions ---
+    startBuildMode(furnitureId: string) {
+      this.buildItemId = furnitureId
+      this.isBuildMode = true
+      this.showBuildMenu = false
+    },
+    cancelBuildMode() {
+      this.isBuildMode = false
+      this.buildItemId = null
+    },
+    placeFurniture(x: number, y: number) {
+      if (!this.buildItemId) return
+      
+      const id = 'shelf_' + Date.now()
+      const newShelf = createShelf(id, this.buildItemId, x, y)
+      
+      this.placedShelves[id] = newShelf
+      
+      // Remove from purchased
+      if (this.purchasedFurniture[this.buildItemId] > 0) {
+        this.purchasedFurniture[this.buildItemId]--
+        if (this.purchasedFurniture[this.buildItemId] === 0) {
+          delete this.purchasedFurniture[this.buildItemId]
+        }
+      }
+      
+      this.cancelBuildMode()
     },
     tickTime(minutes: number) {
       if (this.shopState === 'OPEN') {

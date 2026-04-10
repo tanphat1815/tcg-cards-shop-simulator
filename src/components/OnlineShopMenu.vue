@@ -105,6 +105,9 @@ const purchaseFurniture = (id: string, price: number) => {
             <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': gameStore.level < item.requiredLevel }">
               <div class="flex justify-between items-start mb-2">
                 <h3 class="font-bold text-gray-900 text-lg leading-tight">{{ item.name }}</h3>
+                <span v-if="gameStore.shopInventory[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
+                  Có: {{ gameStore.shopInventory[item.id] }}
+                </span>
               </div>
               <p class="text-xs text-gray-500 mb-4 line-clamp-2 h-8">{{ item.description }}</p>
               
@@ -155,6 +158,9 @@ const purchaseFurniture = (id: string, price: number) => {
             <div class="w-3/5 p-6 flex flex-col" :class="{ 'grayscale opacity-70': gameStore.level < furn.requiredLevel }">
               <div class="flex justify-between items-start mb-2">
                 <h3 class="font-bold text-gray-900 text-xl leading-tight">{{ furn.name }}</h3>
+                <span v-if="gameStore.purchasedFurniture[furn.id]" class="bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-0.5 rounded border border-orange-200">
+                  Có: {{ gameStore.purchasedFurniture[furn.id] }}
+                </span>
               </div>
               <p class="text-sm text-gray-500 mb-4">{{ furn.description }}</p>
               

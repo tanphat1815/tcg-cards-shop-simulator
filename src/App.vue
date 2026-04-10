@@ -4,9 +4,11 @@ import GameContainer from './components/GameContainer.vue'
 import UIOverlay from './components/UIOverlay.vue'
 import PackOpeningOverlay from './components/PackOpeningOverlay.vue'
 import EndOfDayModal from './components/EndOfDayModal.vue'
+import BinderMenu from './components/BinderMenu.vue'
 import ShelfManagementMenu from './components/ShelfManagementMenu.vue'
 import OnlineShopMenu from './components/OnlineShopMenu.vue'
 import DevModeMenu from './components/DevModeMenu.vue'
+import BuildMenu from './components/BuildMenu.vue'
 import { useGameStore } from './stores/gameStore'
 
 const store = useGameStore()
@@ -41,5 +43,6 @@ onMounted(() => {
     <ShelfManagementMenu />
     <OnlineShopMenu />
     <DevModeMenu />
+    <BuildMenu />
   </div>
 </template>

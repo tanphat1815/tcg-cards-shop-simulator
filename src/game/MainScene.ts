@@ -25,6 +25,8 @@ export default class MainScene extends Phaser.Scene {
   private cashierDesk!: Phaser.Physics.Arcade.Sprite
   private keyE!: Phaser.Input.Keyboard.Key
   private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
+  private ghostSprite: Phaser.GameObjects.Sprite | null = null
+  private isPlacementValid: boolean = false
 
   private cursors!: {
     up: Phaser.Input.Keyboard.Key,
@@ -59,21 +61,17 @@ export default class MainScene extends Phaser.Scene {
     anims.create({ key: 'npc-right', frames: anims.generateFrameNumbers('npc', { start: 6, end: 8 }), frameRate: 8, repeat: -1 })
     anims.create({ key: 'npc-up', frames: anims.generateFrameNumbers('npc', { start: 9, end: 11 }), frameRate: 8, repeat: -1 })
 
-    // Tạo Kệ hàng (Shelves) - Static physics
+    // Nhóm vật thể vật lý
     this.shelvesGroup = this.physics.add.staticGroup()
-    
-    const s1 = this.shelvesGroup.create(200, 150, 'shelf') as Phaser.Physics.Arcade.Sprite
-    s1.setData('id', 'shelf1')
-    
-    const s2 = this.shelvesGroup.create(500, 150, 'shelf') as Phaser.Physics.Arcade.Sprite
-    s2.setData('id', 'shelf2')
+    this.cashierGroup = this.physics.add.staticGroup()
 
-    // Text báo hiệu trên kệ
-    this.shelfTexts['shelf1'] = this.add.text(200, 100, '🪹 Empty', { fontSize: '12px', color: '#fff', backgroundColor: '#000' }).setOrigin(0.5)
-    this.shelfTexts['shelf2'] = this.add.text(500, 100, '🪹 Empty', { fontSize: '12px', color: '#fff', backgroundColor: '#000' }).setOrigin(0.5)
+    // Render các kệ đã đặt từ Store
+    const store = useGameStore()
+    Object.values(store.placedShelves).forEach(shelfData => {
+      this.addShelfToScene(shelfData)
+    })
 
     // Tạo Quầy thu ngân (Cashier)
-    this.cashierGroup = this.physics.add.staticGroup()
     this.cashierDesk = this.cashierGroup.create(600, 180, 'cashier') as Phaser.Physics.Arcade.Sprite
     this.cashierDesk.setData('id', 'cashier')
 
@@ -146,9 +144,10 @@ export default class MainScene extends Phaser.Scene {
   update(time: number, delta: number) {
     if (!this.cursors || !this.player.body || !this.keyE) return
 
+    const store = useGameStore()
+
     // Bắt sự kiện ấn phím E (chỉ tính 1 lần ấn xuống JustDown)
     if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
-      const store = useGameStore()
       
       // Tương tác Cashier
       const distToCashier = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.cashierDesk.x, this.cashierDesk.y)
@@ -168,10 +167,18 @@ export default class MainScene extends Phaser.Scene {
       })
     }
 
+    // --- Build Mode Logic ---
+    if (store.isBuildMode) {
+      this.handleBuildMode()
+      return // Dừng các logic di chuyển khi đang ở Build Mode
+    } else if (this.ghostSprite) {
+      this.ghostSprite.destroy()
+      this.ghostSprite = null
+    }
+
     // Cập nhật Text báo hiệu đồ trên kệ liên tục từ Store Pinia
-    const store = useGameStore()
     for (const [id, textObj] of Object.entries(this.shelfTexts)) {
-       const shelfData = store.placedShelves[id as 'shelf1' | 'shelf2']
+       const shelfData = store.placedShelves[id]
        if (shelfData) {
          const totalItems = shelfData.tiers.reduce((sum, t) => sum + t.slots.length, 0)
          if (totalItems > 0) {
@@ -179,6 +186,10 @@ export default class MainScene extends Phaser.Scene {
          } else {
            textObj.setText('🪹 Trống')
          }
+       } else if (id !== 'shelf1' && id !== 'shelf2') { 
+         // Dọn dẹp text nếu kệ không còn tồn tại
+         textObj.destroy()
+         delete this.shelfTexts[id]
        }
     }
 
@@ -259,14 +270,20 @@ export default class MainScene extends Phaser.Scene {
             sprite.body!.velocity.set(0)
             
             const store = useGameStore()
-            let foundShelfId: 'shelf1'|'shelf2'|null = null
-            if (store.placedShelves.shelf1?.tiers.some(t => t.itemId && t.slots.length > 0)) foundShelfId = 'shelf1'
-            else if (store.placedShelves.shelf2?.tiers.some(t => t.itemId && t.slots.length > 0)) foundShelfId = 'shelf2'
+            let foundShelfId: string | null = null
+            // Check all placed shelves
+            for (const shelf of Object.values(store.placedShelves)) {
+              if (shelf.tiers.some(t => t.itemId && t.slots.length > 0)) {
+                foundShelfId = shelf.id
+                break
+              }
+            }
 
             if (foundShelfId) {
+              const targetShelf = store.placedShelves[foundShelfId]
               customer.state = 'SEEK_ITEM'
-              customer.targetX = foundShelfId === 'shelf1' ? 200 : 500
-              customer.targetY = 180 // Đứng trước kệ
+              customer.targetX = targetShelf.x
+              customer.targetY = targetShelf.y + 30 // Đứng trước kệ
             } else {
               // Lượn tiếp nếu shop trống
               customer.targetX = Phaser.Math.Between(100, 700)
@@ -287,8 +304,16 @@ export default class MainScene extends Phaser.Scene {
         case 'INTERACT':
           if (time > customer.timer) {
             const store = useGameStore()
-            const shelfIdToTake = customer.targetX === 200 ? 'shelf1' : 'shelf2'
-            const itemId = store.npcTakeItemFromSlot(shelfIdToTake)
+            // Tìm kệ khách đang đứng
+            let shelfIdToTake = null
+            for (const shelf of Object.values(store.placedShelves)) {
+               if (Phaser.Math.Distance.Between(sprite.x, sprite.y, shelf.x, shelf.y + 30) < 10) {
+                 shelfIdToTake = shelf.id
+                 break
+               }
+            }
+            
+            const itemId = shelfIdToTake ? store.npcTakeItemFromSlot(shelfIdToTake) : null
             
             if (itemId) {
               const itemData = store.shopItems[itemId]
@@ -336,6 +361,75 @@ export default class MainScene extends Phaser.Scene {
           }
           break
       }
+    }
+  }
+
+  private addShelfToScene(shelfData: any) {
+    const shelf = this.shelvesGroup.create(shelfData.x, shelfData.y, 'shelf') as Phaser.Physics.Arcade.Sprite
+    shelf.setData('id', shelfData.id)
+    shelf.refreshBody()
+
+    // Tạo text báo hiệu
+    this.shelfTexts[shelfData.id] = this.add.text(shelfData.x, shelfData.y - 50, '🪹 Empty', { 
+      fontSize: '12px', 
+      color: '#fff', 
+      backgroundColor: '#000' 
+    }).setOrigin(0.5)
+  }
+
+  private handleBuildMode() {
+    const store = useGameStore()
+    const pointer = this.input.activePointer
+
+    // Tạo ghost nếu chưa có
+    if (!this.ghostSprite) {
+      this.ghostSprite = this.add.sprite(pointer.x, pointer.y, 'shelf')
+      this.ghostSprite.setAlpha(0.6)
+      this.ghostSprite.setDepth(100)
+    }
+
+    // Cập nhật vị trí ghost
+    this.ghostSprite.x = pointer.x
+    this.ghostSprite.y = pointer.y
+
+    // Kiểm tra va chạm
+    this.isPlacementValid = true
+
+    // 1. Kiểm tra lấn sân quầy thu ngân
+    const distToCashier = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.cashierDesk.x, this.cashierDesk.y)
+    if (distToCashier < 80) this.isPlacementValid = false
+
+    // 2. Kiểm tra chồng lấn các kệ khác
+    this.shelvesGroup.getChildren().forEach(child => {
+      const shelf = child as Phaser.Physics.Arcade.Sprite
+      const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, shelf.x, shelf.y)
+      if (dist < 60) this.isPlacementValid = false
+    })
+
+    // 3. Kiểm tra gần Player (không đặt đè lên đầu mình)
+    const distToPlayer = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.player.x, this.player.y)
+    if (distToPlayer < 50) this.isPlacementValid = false
+
+    // Visual feedback
+    if (this.isPlacementValid) {
+      this.ghostSprite.setTint(0x00ff00)
+    } else {
+      this.ghostSprite.setTint(0xff0000)
+    }
+
+    // Click để đặt
+    if (pointer.isDown && this.isPlacementValid) {
+       store.placeFurniture(pointer.x, pointer.y)
+       // Render ngay lập tức kệ vừa đặt (store update sẽ trigger render ở đời thực, 
+       // nhưng ở đây ta vẽ tay 1 lần để mượt hoặc đợi loop subscribe)
+       this.addShelfToScene(Object.values(store.placedShelves).slice(-1)[0])
+       this.ghostSprite.destroy()
+       this.ghostSprite = null
+    }
+
+    // Phím Esc để hủy (Hỗ trợ thêm)
+    if (this.input.keyboard && Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC))) {
+      store.cancelBuildMode()
     }
   }
 }
