@@ -27,6 +27,8 @@ export const useGameStore = defineStore('game', {
     shopState: 'CLOSED' as 'OPEN' | 'CLOSED',
     waitingCustomers: 0,
     waitingQueue: [] as number[],
+    isOpeningPack: false,
+    currentPack: [] as CardData[],
     allCards: cardsData as CardData[]
   }),
   actions: {
@@ -118,7 +120,13 @@ export const useGameStore = defineStore('game', {
         }
         this.inventory[randomCard.id]++
       }
+      this.currentPack = pulledCards
+      this.isOpeningPack = true
       return pulledCards
+    },
+    closePackOpening() {
+      this.isOpeningPack = false
+      this.currentPack = []
     }
   }
 })
