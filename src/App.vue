@@ -6,6 +6,7 @@ import PackOpeningOverlay from './components/PackOpeningOverlay.vue'
 import EndOfDayModal from './components/EndOfDayModal.vue'
 import BinderMenu from './components/BinderMenu.vue'
 import ShelfManagementMenu from './components/ShelfManagementMenu.vue'
+import OnlineShopMenu from './components/OnlineShopMenu.vue'
 import { useGameStore } from './stores/gameStore'
 
 const store = useGameStore()
@@ -18,6 +19,7 @@ onMounted(() => {
       money: state.money,
       shopInventory: state.shopInventory,
       personalBinder: state.personalBinder,
+      purchasedFurniture: state.purchasedFurniture,
       placedShelves: state.placedShelves,
       currentDay: state.currentDay,
       timeInMinutes: state.timeInMinutes,
@@ -37,5 +39,6 @@ onMounted(() => {
     <EndOfDayModal />
     <BinderMenu />
     <ShelfManagementMenu />
+    <OnlineShopMenu />
   </div>
 </template>

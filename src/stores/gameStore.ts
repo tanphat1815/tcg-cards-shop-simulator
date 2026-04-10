@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import cardsData from '../assets/data/cards.json'
 import { getRequiredExp, XP_REWARDS } from '../config/leveling'
+import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
 
 export interface CardData {
   id: string
@@ -38,9 +39,10 @@ export const useGameStore = defineStore('game', {
     isOpeningPack: false,
     currentPack: [] as CardData[],
     allCards: cardsData as CardData[],
-    shopItems: {
-      'basic_pack': { id: 'basic_pack', name: 'Booster Pack Thường', buyPrice: 10, sellPrice: 15, isPack: true }
-    } as Record<string, { id: string, name: string, buyPrice: number, sellPrice: number, isPack: boolean }>,
+    shopItems: STOCK_ITEMS,
+    // Online Shop
+    showOnlineShop: false,
+    purchasedFurniture: {} as Record<string, number>,
     // Leveling
     level: 1,
     currentExp: 0,
@@ -63,6 +65,7 @@ export const useGameStore = defineStore('game', {
           this.money = parsed.money ?? 1000
           this.shopInventory = parsed.shopInventory ?? {}
           this.personalBinder = parsed.personalBinder ?? {}
+          this.purchasedFurniture = parsed.purchasedFurniture ?? {}
           if (parsed.placedShelves) {
             this.placedShelves = parsed.placedShelves;
           }
@@ -186,15 +189,30 @@ export const useGameStore = defineStore('game', {
       }
       return null
     },
-    buyPackToInventory() {
-      const PACK_PRICE = 10
-      if (this.money < PACK_PRICE) {
-        alert("Không đủ tiền nhập Pack!")
-        return
-      }
-      this.spendMoney(PACK_PRICE)
-      if (!this.shopInventory['basic_pack']) this.shopInventory['basic_pack'] = 0
-      this.shopInventory['basic_pack']++
+    buyStock(itemId: string, amount: number = 1) {
+      const itemData = STOCK_ITEMS[itemId]
+      if (!itemData) return false
+      
+      const totalCost = itemData.buyPrice * amount
+      if (this.money < totalCost) return false
+      if (this.level < itemData.requiredLevel) return false
+      
+      this.spendMoney(totalCost)
+      if (!this.shopInventory[itemId]) this.shopInventory[itemId] = 0
+      this.shopInventory[itemId] += amount
+      return true
+    },
+    buyFurniture(furnitureId: string) {
+      const furnitureData = FURNITURE_ITEMS[furnitureId]
+      if (!furnitureData) return false
+      
+      if (this.money < furnitureData.buyPrice) return false
+      if (this.level < furnitureData.requiredLevel) return false
+      
+      this.spendMoney(furnitureData.buyPrice)
+      if (!this.purchasedFurniture[furnitureId]) this.purchasedFurniture[furnitureId] = 0
+      this.purchasedFurniture[furnitureId]++
+      return true
     },
     tearPack(packId: string) {
       if (!this.shopInventory[packId] || this.shopInventory[packId] <= 0) return

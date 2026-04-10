@@ -28,9 +28,7 @@ const formattedTime = computed(() => {
   return `${displayHours.toString().padStart(2, '0')}:${remainingMins.toString().padStart(2, '0')} ${ampm}`
 })
 
-const handleBuyPack = () => {
-  gameStore.buyPackToInventory()
-}
+// The buy pack function is moved to OnlineShopMenu
 
 // Level Up Toast
 const showLevelUpToast = ref(false)
@@ -95,10 +93,10 @@ const inventoryDetails = computed(() => {
       </div>
       
       <button 
-        @click="handleBuyPack" 
-        class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-indigo-500/30 transform hover:-translate-y-0.5"
+        @click="gameStore.showOnlineShop = true" 
+        class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
       >
-        Nhập 1 Booster Pack ($10)
+        <span class="text-xl">💻</span> ONLINE SHOP
       </button>
 
       <!-- Khách đợi thanh toán -->
