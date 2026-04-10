@@ -1,0 +1,270 @@
+import Phaser from 'phaser'
+import { useGameStore } from '../stores/gameStore'
+
+type NPCState = 'SPAWN' | 'WANDER' | 'SEEK_ITEM' | 'INTERACT' | 'GO_CASHIER' | 'WAITING' | 'LEAVE'
+
+interface Customer {
+  sprite: Phaser.Physics.Arcade.Sprite;
+  state: NPCState;
+  timer: number;
+  targetX: number;
+  targetY: number;
+}
+
+export default class MainScene extends Phaser.Scene {
+  private player!: Phaser.Physics.Arcade.Sprite
+  private customers: Customer[] = []
+  private shelvesGroup!: Phaser.Physics.Arcade.StaticGroup
+  private keyE!: Phaser.Input.Keyboard.Key
+  private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
+
+  private cursors!: {
+    up: Phaser.Input.Keyboard.Key,
+    down: Phaser.Input.Keyboard.Key,
+    left: Phaser.Input.Keyboard.Key,
+    right: Phaser.Input.Keyboard.Key
+  }
+
+  constructor() {
+    super({ key: 'MainScene' })
+  }
+
+  create() {
+    this.cameras.main.setBackgroundColor('#2ecc71')
+
+    // Texture Player
+    const playerGraphics = this.make.graphics({ x: 0, y: 0 })
+    playerGraphics.fillStyle(0xffffff, 1)
+    playerGraphics.fillRect(0, 0, 32, 32)
+    playerGraphics.generateTexture('playerBox', 32, 32)
+    
+    // Texture NPC
+    const npcGraphics = this.make.graphics({ x: 0, y: 0 })
+    npcGraphics.fillStyle(0xff0000, 1)
+    npcGraphics.fillRect(0, 0, 32, 32)
+    npcGraphics.generateTexture('npcBox', 32, 32)
+
+    // Texture Shelf
+    const shelfGraphics = this.make.graphics({ x: 0, y: 0 })
+    shelfGraphics.fillStyle(0x8B4513, 1) // Nâu
+    shelfGraphics.fillRect(0, 0, 64, 48)
+    shelfGraphics.generateTexture('shelfBox', 64, 48)
+
+    // Tạo Kệ hàng (Shelves) - Static physics
+    this.shelvesGroup = this.physics.add.staticGroup()
+    
+    const s1 = this.shelvesGroup.create(200, 150, 'shelfBox') as Phaser.Physics.Arcade.Sprite
+    s1.setData('id', 'shelf1')
+    
+    const s2 = this.shelvesGroup.create(500, 150, 'shelfBox') as Phaser.Physics.Arcade.Sprite
+    s2.setData('id', 'shelf2')
+
+    // Text báo hiệu trên kệ
+    this.shelfTexts['shelf1'] = this.add.text(200, 100, '🪹 Empty', { fontSize: '12px', color: '#fff', backgroundColor: '#000' }).setOrigin(0.5)
+    this.shelfTexts['shelf2'] = this.add.text(500, 100, '🪹 Empty', { fontSize: '12px', color: '#fff', backgroundColor: '#000' }).setOrigin(0.5)
+
+    // Player
+    this.player = this.physics.add.sprite(400, 300, 'playerBox')
+    this.player.setCollideWorldBounds(true)
+
+    // Va chạm với kệ
+    this.physics.add.collider(this.player, this.shelvesGroup)
+
+    // Cấu hình phím
+    if (this.input.keyboard) {
+      this.cursors = this.input.keyboard.addKeys({
+        up: Phaser.Input.Keyboard.KeyCodes.W,
+        down: Phaser.Input.Keyboard.KeyCodes.S,
+        left: Phaser.Input.Keyboard.KeyCodes.A,
+        right: Phaser.Input.Keyboard.KeyCodes.D
+      }) as typeof this.cursors
+      
+      // Phím tương tác 'E'
+      this.keyE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E)
+    }
+
+    // Spawn khách
+    this.time.addEvent({
+      delay: 3000,
+      callback: this.spawnCustomer,
+      callbackScope: this,
+      loop: true
+    })
+
+    // Lắng nghe thanh toán
+    const gameStore = useGameStore()
+    let lastWaitingCount = gameStore.waitingCustomers
+
+    gameStore.$subscribe((mutation, state) => {
+      if (state.waitingCustomers < lastWaitingCount) {
+        const waitingCust = this.customers.find(c => c.state === 'WAITING')
+        if (waitingCust) {
+          waitingCust.state = 'LEAVE'
+          waitingCust.targetX = 400
+          waitingCust.targetY = 650
+          this.physics.moveTo(waitingCust.sprite, waitingCust.targetX, waitingCust.targetY, 100)
+        }
+      }
+      lastWaitingCount = state.waitingCustomers
+    })
+  }
+
+  spawnCustomer() {
+    if (this.customers.length >= 10) return
+
+    const npcSprite = this.physics.add.sprite(400, 600, 'npcBox')
+    npcSprite.setCollideWorldBounds(true)
+
+    this.customers.push({
+      sprite: npcSprite,
+      state: 'SPAWN',
+      timer: this.time.now + 1000,
+      targetX: 400,
+      targetY: 600
+    })
+  }
+
+  update(time: number, delta: number) {
+    if (!this.cursors || !this.player.body || !this.keyE) return
+
+    // Bắt sự kiện ấn phím E (chỉ tính 1 lần ấn xuống JustDown)
+    if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
+      const store = useGameStore()
+      this.shelvesGroup.getChildren().forEach(child => {
+        const shelf = child as Phaser.Physics.Arcade.Sprite
+        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, shelf.x, shelf.y)
+        // Nếu đứng đủ gần (bán kính 70px)
+        if (dist < 70) {
+          store.placeItemOnShelf(shelf.getData('id'))
+        }
+      })
+    }
+
+    // Cập nhật Text báo hiệu đồ trên kệ liên tục từ Store Pinia
+    const store = useGameStore()
+    for (const [id, textObj] of Object.entries(this.shelfTexts)) {
+       const shelfItem = store.shelves[id as 'shelf1' | 'shelf2']
+       if (shelfItem && shelfItem.quantity > 0) {
+         const cardInfo = store.allCards.find(c => c.id === shelfItem.cardId)
+         textObj.setText(`🔖 ${cardInfo?.name}: ${shelfItem.quantity}`)
+       } else {
+         textObj.setText('🪹 Empty')
+       }
+    }
+
+    // Player di chuyển
+    this.player.setVelocity(0)
+    const speed = 160
+    let isMoving = false
+
+    if (this.cursors.left.isDown) {
+      this.player.setVelocityX(-speed)
+      isMoving = true
+    } else if (this.cursors.right.isDown) {
+      this.player.setVelocityX(speed)
+      isMoving = true
+    }
+
+    if (this.cursors.up.isDown) {
+      this.player.setVelocityY(-speed)
+      isMoving = true
+    } else if (this.cursors.down.isDown) {
+      this.player.setVelocityY(speed)
+      isMoving = true
+    }
+
+    if (isMoving) {
+      this.player.body.velocity.normalize().scale(speed)
+    }
+
+    // NPC Logic
+    for (let i = this.customers.length - 1; i >= 0; i--) {
+      const customer = this.customers[i]
+      const sprite = customer.sprite
+      const npcSpeed = 100
+
+      switch (customer.state) {
+        case 'SPAWN':
+          if (time > customer.timer) {
+            customer.state = 'WANDER'
+            customer.targetX = Phaser.Math.Between(100, 700)
+            customer.targetY = Phaser.Math.Between(300, 500)
+            this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+          }
+          break
+
+        case 'WANDER':
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+            sprite.body!.velocity.set(0)
+            
+            const store = useGameStore()
+            let foundShelfId: 'shelf1'|'shelf2'|null = null
+            // Check if shelf 1 or shelf 2 has items
+            if (store.shelves.shelf1 && store.shelves.shelf1.quantity > 0) foundShelfId = 'shelf1'
+            else if (store.shelves.shelf2 && store.shelves.shelf2.quantity > 0) foundShelfId = 'shelf2'
+
+            if (foundShelfId) {
+              customer.state = 'SEEK_ITEM'
+              customer.targetX = foundShelfId === 'shelf1' ? 200 : 500
+              customer.targetY = 180 // Đứng trước kệ
+            } else {
+              // Lượn tiếp nếu shop trống
+              customer.targetX = Phaser.Math.Between(100, 700)
+              customer.targetY = Phaser.Math.Between(300, 500)
+            }
+            this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+          }
+          break
+
+        case 'SEEK_ITEM':
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+            sprite.body!.velocity.set(0)
+            customer.state = 'INTERACT'
+            customer.timer = time + 1000 // Xem hàng/lấy hàng trong 1s
+          }
+          break
+
+        case 'INTERACT':
+          if (time > customer.timer) {
+            const store = useGameStore()
+            const shelfIdToTake = customer.targetX === 200 ? 'shelf1' : 'shelf2'
+            const tookItem = store.npcTakeItemFromShelf(shelfIdToTake)
+            
+            if (tookItem) {
+              customer.state = 'GO_CASHIER'
+              const offset = this.customers.filter(c => c.state === 'WAITING').length * 40
+              customer.targetX = 600 
+              customer.targetY = 200 + offset 
+            } else {
+              customer.state = 'WANDER'
+              customer.targetX = Phaser.Math.Between(100, 700)
+              customer.targetY = Phaser.Math.Between(300, 500)
+            }
+            this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+          }
+          break
+
+        case 'GO_CASHIER':
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+            sprite.body!.velocity.set(0)
+            if (customer.state !== 'WAITING') { 
+              customer.state = 'WAITING'
+              useGameStore().addWaitingCustomer()
+            }
+          }
+          break
+
+        case 'WAITING':
+          sprite.body!.velocity.set(0) 
+          break
+
+        case 'LEAVE':
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+            sprite.destroy()
+            this.customers.splice(i, 1) 
+          }
+          break
+      }
+    }
+  }
+}
