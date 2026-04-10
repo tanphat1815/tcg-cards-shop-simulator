@@ -3,7 +3,7 @@ import { ref, watch, onUnmounted } from 'vue'
 import { useGameStore } from '../stores/gameStore'
 
 const gameStore = useGameStore()
-const flipped = ref<boolean[]>([false, false, false, false, false])
+const flipped = ref<boolean[]>([])
 const particleCanvas = ref<HTMLCanvasElement | null>(null)
 
 // --- Audio System ---
@@ -126,7 +126,7 @@ const updateParticles = () => {
 // --- Logic ---
 watch(() => gameStore.isOpeningPack, (newVal) => {
   if (newVal) {
-    flipped.value = [false, false, false, false, false]
+    flipped.value = new Array(gameStore.currentPack.length).fill(false)
     
     // Attempt play tear sound
     playTearSound()
@@ -167,7 +167,7 @@ const flipCard = (index: number, event: MouseEvent) => {
 }
 
 const allFlipped = () => {
-  return flipped.value.length === 5 && flipped.value.every(f => f)
+  return flipped.value.length > 0 && flipped.value.every(f => f)
 }
 </script>
 
@@ -180,11 +180,11 @@ const allFlipped = () => {
       ⭐ PACK REVEAL ⭐
     </h1>
 
-    <div class="flex gap-6 justify-center flex-wrap max-w-6xl">
+    <div class="flex gap-4 justify-center flex-wrap max-w-5xl mx-auto px-4">
       <div 
         v-for="(card, index) in gameStore.currentPack" 
         :key="index"
-        class="w-52 h-72 perspective-1000 cursor-pointer group z-10"
+        class="w-48 h-64 perspective-1000 cursor-pointer group z-10"
         @click="flipCard(index, $event)"
       >
         <div 

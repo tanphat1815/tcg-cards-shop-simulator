@@ -173,9 +173,9 @@ export default class MainScene extends Phaser.Scene {
     for (const [id, textObj] of Object.entries(this.shelfTexts)) {
        const shelfData = store.placedShelves[id as 'shelf1' | 'shelf2']
        if (shelfData) {
-         const filledCount = shelfData.slots.filter(s => s.cardId !== null).length
-         if (filledCount > 0) {
-           textObj.setText(`🏷️ Hàng: ${filledCount}/${shelfData.slots.length}`)
+         const filledSlots = shelfData.slots.filter(s => s.itemId !== null && s.quantity > 0)
+         if (filledSlots.length > 0) {
+           textObj.setText(`🏷️ Hàng: ${filledSlots.length}/${shelfData.slots.length}`)
          } else {
            textObj.setText('🪹 Trống')
          }
@@ -260,8 +260,8 @@ export default class MainScene extends Phaser.Scene {
             const store = useGameStore()
             let foundShelfId: 'shelf1'|'shelf2'|null = null
             // Check if shelf 1 or shelf 2 has items
-            if (store.placedShelves.shelf1 && store.placedShelves.shelf1.slots.some(s => s.cardId !== null)) foundShelfId = 'shelf1'
-            else if (store.placedShelves.shelf2 && store.placedShelves.shelf2.slots.some(s => s.cardId !== null)) foundShelfId = 'shelf2'
+            if (store.placedShelves.shelf1 && store.placedShelves.shelf1.slots.some(s => s.itemId !== null && s.quantity > 0)) foundShelfId = 'shelf1'
+            else if (store.placedShelves.shelf2 && store.placedShelves.shelf2.slots.some(s => s.itemId !== null && s.quantity > 0)) foundShelfId = 'shelf2'
 
             if (foundShelfId) {
               customer.state = 'SEEK_ITEM'
@@ -294,7 +294,8 @@ export default class MainScene extends Phaser.Scene {
               const itemData = store.shopItems[itemId]
               customer.targetPrice = itemData ? itemData.sellPrice : 15
               
-              const popup = this.add.text(sprite.x, sprite.y - 40, '+1 Pack 🎁', { fontSize: '12px', color: '#00ff00', fontStyle: 'bold' }).setOrigin(0.5)
+              const popupText = itemData?.type === 'box' ? '+1 Box 📦' : '+1 Pack 🎁'
+              const popup = this.add.text(sprite.x, sprite.y - 40, popupText, { fontSize: '12px', color: '#00ff00', fontStyle: 'bold' }).setOrigin(0.5)
               this.tweens.add({ targets: popup, y: popup.y - 30, alpha: 0, duration: 1500, onComplete: () => popup.destroy() })
 
               customer.state = 'GO_CASHIER'

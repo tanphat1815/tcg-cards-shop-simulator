@@ -8,7 +8,9 @@ export interface StockItemInfo {
   buyPrice: number;
   sellPrice: number;
   requiredLevel: number;
-  isPack: boolean;
+  type: 'pack' | 'box';
+  volume: number; // Volume slot capacity (1 slot = MAX_VOLUME 32)
+  contains?: { itemId: string; amount: number }; // Used for unboxing
   description: string;
 }
 
@@ -22,32 +24,47 @@ export interface FurnitureItemInfo {
 }
 
 export const STOCK_ITEMS: Record<string, StockItemInfo> = {
-  'basic_pack': {
-    id: 'basic_pack',
-    name: 'Booster Pack Thường',
-    buyPrice: 10,
-    sellPrice: 15,
+  'pack_basic': {
+    id: 'pack_basic',
+    name: 'Basic Card Pack',
+    buyPrice: 1,
+    sellPrice: 5,
     requiredLevel: 1,
-    isPack: true,
-    description: 'Chứa 5 thẻ bài chất lượng cơ bản. Tỷ lệ thẻ Rare thấp.'
+    type: 'pack',
+    volume: 1,
+    description: 'Pack cơ bản dùng để khởi nghiệp. Chứa 8 thẻ bài ngẫu nhiên.'
   },
-  'silver_pack': {
-    id: 'silver_pack',
-    name: 'Silver Booster Pack',
-    buyPrice: 25,
-    sellPrice: 40,
-    requiredLevel: 5,
-    isPack: true,
-    description: 'Gói bài Bạc. Cơ hội mở ra thẻ Uncommon và Rare cao hơn.'
-  },
-  'golden_pack': {
-    id: 'golden_pack',
-    name: 'Golden Box Pack',
-    buyPrice: 60,
+  'box_basic_32': {
+    id: 'box_basic_32',
+    name: 'Basic Card Box (32 Packs)',
+    buyPrice: 50,
     sellPrice: 100,
-    requiredLevel: 12,
-    isPack: true,
-    description: 'Hộp bài Vàng. Dành cho giới siêu giàu, nhặt thẻ Rare mỏi tay.'
+    requiredLevel: 2,
+    type: 'box',
+    volume: 8,
+    contains: { itemId: 'pack_basic', amount: 32 },
+    description: 'Hộp nguyên kiện 32 Packs để bán sỉ hoặc thỏa mãn thú vui xé hộp.'
+  },
+  'pack_rare': {
+    id: 'pack_rare',
+    name: 'Rare Card Pack',
+    buyPrice: 3,
+    sellPrice: 14,
+    requiredLevel: 8,
+    type: 'pack',
+    volume: 1,
+    description: 'Pack cao cấp. Tăng đáng kể tỉ lệ ra thẻ Rare (15%).'
+  },
+  'box_rare_32': {
+    id: 'box_rare_32',
+    name: 'Rare Card Box (32 Packs)',
+    buyPrice: 300,
+    sellPrice: 500,
+    requiredLevel: 8,
+    type: 'box',
+    volume: 8,
+    contains: { itemId: 'pack_rare', amount: 32 },
+    description: 'Hộp hiếm nguyên seal. Lợi nhuận siêu khổng lồ.'
   }
 };
 

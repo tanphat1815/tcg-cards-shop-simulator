@@ -14,7 +14,8 @@ export interface CardData {
 }
 
 export interface ShelfSlot {
-  cardId: string | null;
+  itemId: string | null;
+  quantity: number;
 }
 
 export interface ShelfData {
@@ -28,8 +29,8 @@ export const useGameStore = defineStore('game', {
     shopInventory: {} as Record<string, number>, // itemId -> quantity
     personalBinder: {} as Record<string, number>, // cardId -> quantity
     placedShelves: {
-      shelf1: { id: 'shelf1', slots: Array(48).fill(null).map(() => ({ cardId: null })) } as ShelfData,
-      shelf2: { id: 'shelf2', slots: Array(48).fill(null).map(() => ({ cardId: null })) } as ShelfData
+      shelf1: { id: 'shelf1', slots: Array(48).fill(null).map(() => ({ itemId: null, quantity: 0 })) } as ShelfData,
+      shelf2: { id: 'shelf2', slots: Array(48).fill(null).map(() => ({ itemId: null, quantity: 0 })) } as ShelfData
     } as Record<string, ShelfData>,
     activeShelfId: null as string | null,
     showShelfMenu: false,
@@ -67,7 +68,13 @@ export const useGameStore = defineStore('game', {
           this.personalBinder = parsed.personalBinder ?? {}
           this.purchasedFurniture = parsed.purchasedFurniture ?? {}
           if (parsed.placedShelves) {
-            this.placedShelves = parsed.placedShelves;
+            // Check backward compatibility
+            const sampleSlot = parsed.placedShelves['shelf1']?.slots[0]
+            if (sampleSlot && typeof sampleSlot.cardId !== 'undefined') {
+              console.warn("Detected old save format for shelves. Wiping shelves to apply new Data Model.")
+            } else {
+              this.placedShelves = parsed.placedShelves;
+            }
           }
           this.currentDay = parsed.currentDay ?? 1
           this.timeInMinutes = parsed.timeInMinutes ?? 480
@@ -104,8 +111,8 @@ export const useGameStore = defineStore('game', {
         this.dailyStats.customersServed++
         this.dailyStats.revenue += price
         
-        // XP Reward: 5 XP per Pack (we only have packs for now)
-        this.gainExp(XP_REWARDS.SELL_PACK)
+        // XP Reward: 5 XP (Assume standard Pack/Box reward or derive from price)
+        this.gainExp(5)
       }
     },
     openShelfManagement(shelfId: string) {
@@ -122,41 +129,73 @@ export const useGameStore = defineStore('game', {
       const shelf = this.placedShelves[this.activeShelfId]
       if (!shelf) return
 
-      const existingItem = shelf.slots[slotIndex].cardId
-      if (existingItem) {
-        if (!this.shopInventory[existingItem]) this.shopInventory[existingItem] = 0
-        this.shopInventory[existingItem]++
+      const slot = shelf.slots[slotIndex]
+      const itemData = this.shopItems[itemId]
+      if (!itemData) return
+      const maxQty = Math.floor(32 / itemData.volume)
+
+      // Xử lý ném hàng cũ vào kho nếu khác loại
+      if (slot.itemId && slot.itemId !== itemId) {
+        if (!this.shopInventory[slot.itemId]) this.shopInventory[slot.itemId] = 0
+        this.shopInventory[slot.itemId] += slot.quantity
+        slot.itemId = null
+        slot.quantity = 0
       }
 
       if (this.shopInventory[itemId] > 0) {
-        this.shopInventory[itemId]--
-        if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
-        shelf.slots[slotIndex].cardId = itemId
-      } else {
-        shelf.slots[slotIndex].cardId = null
+        if (slot.itemId === null) {
+          slot.itemId = itemId
+          slot.quantity = 1
+          this.shopInventory[itemId]--
+          if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
+        } else if (slot.itemId === itemId && slot.quantity < maxQty) {
+          slot.quantity++
+          this.shopInventory[itemId]--
+          if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
+        }
       }
     },
     clearShelfSlot(shelfId: string, slotIndex: number) {
       const shelf = this.placedShelves[shelfId]
       if (!shelf) return
       
-      const itemId = shelf.slots[slotIndex].cardId
-      if (itemId) {
-        shelf.slots[slotIndex].cardId = null
-        if (!this.shopInventory[itemId]) this.shopInventory[itemId] = 0
-        this.shopInventory[itemId]++
+      const slot = shelf.slots[slotIndex]
+      if (slot.itemId) {
+        if (!this.shopInventory[slot.itemId]) this.shopInventory[slot.itemId] = 0
+        this.shopInventory[slot.itemId] += slot.quantity
+        slot.itemId = null
+        slot.quantity = 0
       }
     },
-    autoFillShelf(itemId: string) {
+    autoFillShelf(itemId: string, startSlotIndex: number = 0) {
       if (!this.activeShelfId) return
       const shelf = this.placedShelves[this.activeShelfId]
       if (!shelf) return
       
-      for (let i = 0; i < shelf.slots.length; i++) {
-        if (this.shopInventory[itemId] > 0 && shelf.slots[i].cardId === null) {
-          this.shopInventory[itemId]--
-          if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
-          shelf.slots[i].cardId = itemId
+      const itemData = this.shopItems[itemId]
+      if (!itemData) return
+      const maxQty = Math.floor(32 / itemData.volume)
+      
+      for (let i = startSlotIndex; i < shelf.slots.length; i++) {
+        if (this.shopInventory[itemId] && this.shopInventory[itemId] > 0) {
+          const slot = shelf.slots[i]
+          
+          if (slot.itemId === null) {
+            slot.itemId = itemId
+            slot.quantity = 0
+          }
+          
+          if (slot.itemId === itemId) {
+            const spaceLeft = maxQty - slot.quantity
+            if (spaceLeft > 0) {
+              const amountToAdd = Math.min(spaceLeft, this.shopInventory[itemId])
+              slot.quantity += amountToAdd
+              this.shopInventory[itemId] -= amountToAdd
+              if (this.shopInventory[itemId] === 0) delete this.shopInventory[itemId]
+            }
+          }
+        } else {
+          break;
         }
       }
     },
@@ -166,24 +205,24 @@ export const useGameStore = defineStore('game', {
       if (!shelf) return
       
       for (let i = 0; i < shelf.slots.length; i++) {
-        const itemId = shelf.slots[i].cardId
-        if (itemId) {
-          shelf.slots[i].cardId = null
-          if (!this.shopInventory[itemId]) this.shopInventory[itemId] = 0
-          this.shopInventory[itemId]++
-        }
+        this.clearShelfSlot(shelf.id, i)
       }
     },
     npcTakeItemFromSlot(shelfId: string) {
       const shelf = this.placedShelves[shelfId]
       if (!shelf) return null
       
-      const filledSlots = shelf.slots.map((s, idx) => ({ s, idx })).filter(item => item.s.cardId !== null)
+      const filledSlots = shelf.slots.map((s, idx) => ({ s, idx })).filter(item => item.s.itemId !== null && item.s.quantity > 0)
       if (filledSlots.length > 0) {
         const randIndex = Math.floor(Math.random() * filledSlots.length)
         const slot = filledSlots[randIndex]
-        const itemId = slot.s.cardId
-        shelf.slots[slot.idx].cardId = null
+        const itemId = slot.s.itemId!
+        
+        shelf.slots[slot.idx].quantity--
+        if (shelf.slots[slot.idx].quantity <= 0) {
+          shelf.slots[slot.idx].itemId = null
+        }
+        
         this.dailyStats.itemsSold++
         return itemId
       }
@@ -214,19 +253,45 @@ export const useGameStore = defineStore('game', {
       this.purchasedFurniture[furnitureId]++
       return true
     },
+    unboxItem(boxId: string) {
+      const box = this.shopItems[boxId]
+      if (!box || box.type !== 'box' || !box.contains) return
+      
+      if (this.shopInventory[boxId] > 0) {
+         this.shopInventory[boxId]--
+         if (this.shopInventory[boxId] === 0) delete this.shopInventory[boxId]
+         
+         const innerId = box.contains.itemId
+         const innerAmount = box.contains.amount
+         
+         if (!this.shopInventory[innerId]) this.shopInventory[innerId] = 0
+         this.shopInventory[innerId] += innerAmount
+      }
+    },
     tearPack(packId: string) {
       if (!this.shopInventory[packId] || this.shopInventory[packId] <= 0) return
       
-      // Consume 1 pack
+      let weights = { Common: 65, Uncommon: 30, Rare: 5 } // pack_basic
+      if (packId === 'pack_rare') {
+        weights = { Common: 15, Uncommon: 70, Rare: 15 } // Adjusted based on request
+      } else if (packId === 'silver_pack') {
+        weights = { Common: 40, Uncommon: 45, Rare: 15 }
+      } else if (packId === 'golden_pack') {
+        weights = { Common: 10, Uncommon: 40, Rare: 50 }
+      }
+
       this.shopInventory[packId]--
       if (this.shopInventory[packId] === 0) delete this.shopInventory[packId]
 
       const pulledCards: CardData[] = []
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 8; i++) { // Generate 8 cards
         const rand = Math.random() * 100
         let targetRarity = 'Common'
-        if (rand <= 5) targetRarity = 'Rare'
-        else if (rand <= 30) targetRarity = 'Uncommon'
+        if (rand <= weights.Rare) {
+           targetRarity = 'Rare'
+        } else if (rand <= weights.Rare + weights.Uncommon) {
+           targetRarity = 'Uncommon'
+        }
         
         const possibleCards = this.allCards.filter(c => c.rarity === targetRarity)
         const cardPool = possibleCards.length > 0 ? possibleCards : this.allCards
@@ -255,7 +320,7 @@ export const useGameStore = defineStore('game', {
         this.level++
         this.currentExp = this.currentExp - req
         this.showLevelUpNext = true
-        // If still over, recurse
+        // Recurse in case of massive XP
         this.gainExp(0)
       }
     },

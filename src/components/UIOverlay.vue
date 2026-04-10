@@ -49,7 +49,7 @@ const inventoryDetails = computed(() => {
       id: itemId,
       name: itemData?.name || 'Unknown Item',
       quantity: gameStore.shopInventory[itemId],
-      isPack: itemData?.isPack || false
+      type: itemData?.type || 'pack'
     }
   }).sort((a, b) => b.quantity - a.quantity)
 })
@@ -119,6 +119,8 @@ const inventoryDetails = computed(() => {
         </button>
       </div>
       
+      <p class="text-[11px] text-gray-400 mb-2 italic">Mẹo: Hãy lại gần Kệ rỗng và ấn phím E để xếp đồ!</p>
+      
       <div v-if="inventoryDetails.length === 0" class="text-gray-400 italic text-sm text-center py-8">
         Kho đồ trống rỗng. Hãy mua một Pack!
       </div>
@@ -129,15 +131,18 @@ const inventoryDetails = computed(() => {
           class="flex justify-between items-center bg-gray-800/60 p-3 rounded-xl border border-gray-700/30 hover:bg-gray-700/50 transition-colors"
         >
           <div class="flex flex-col">
-            <span class="font-bold text-[15px] text-gray-200 flex items-center gap-2">
-              <span v-if="item.isPack">🎁</span> {{ item.name }}
+            <span class="font-bold text-[15px] text-gray-200 flex items-center gap-2 line-clamp-1 h-6 pr-2">
+              <span>{{ item.type === 'box' ? '📦' : '🎁' }}</span> {{ item.name }}
             </span>
           </div>
-          <div class="flex items-center gap-3">
-            <button v-if="item.isPack" @click="gameStore.tearPack(item.id)" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-1 px-3 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">
-              Xé Pack
+          <div class="flex items-center gap-2">
+            <button v-if="item.type === 'box'" @click="gameStore.unboxItem(item.id)" class="bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-2.5 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">
+              Xé Hộp
             </button>
-            <div class="bg-gray-900 text-gray-200 px-3 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold w-12 text-center">
+            <button v-if="item.type === 'pack'" @click="gameStore.tearPack(item.id)" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-1 px-2.5 rounded-lg shadow uppercase text-[10px] tracking-wider transition-colors">
+              Mở Pack
+            </button>
+            <div class="bg-gray-900 text-gray-200 px-2 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold min-w-[36px] text-center">
               x{{ item.quantity }}
             </div>
           </div>

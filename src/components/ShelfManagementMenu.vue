@@ -71,7 +71,7 @@ const clearSlot = (slotIndex: number) => {
         
         <!-- Left: Inventory -->
         <div class="w-1/3 border-r border-gray-700 bg-gray-900/50 p-4 flex flex-col relative">
-          <h3 class="text-lg font-bold text-gray-200 mb-4 pb-2 border-b border-gray-700">📦 Kho hàng (Chỉ bán Pack)</h3>
+          <h3 class="text-lg font-bold text-gray-200 mb-4 pb-2 border-b border-gray-700">📦 Kho hàng (Sắp xếp đồ lên kệ)</h3>
           
           <div v-if="inventoryItems.length === 0" class="text-center text-gray-500 italic mt-10">
             Kho hiện đang trống.
@@ -85,10 +85,10 @@ const clearSlot = (slotIndex: number) => {
               :class="selectedItemId === item.id ? 'bg-indigo-900/40 border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'bg-gray-800/60 border-gray-700/50 hover:bg-gray-700'"
             >
               <div class="flex flex-col">
-                <span class="font-bold text-[15px] text-yellow-300 flex items-center gap-2">
-                  <span v-if="item.item.isPack">🎁</span> {{ item.item.name }}
+                <span class="font-bold text-[14px] text-yellow-300 flex items-center gap-2 line-clamp-1 h-6 pr-2">
+                  <span>{{ item.item.type === 'box' ? '📦' : '🎁' }}</span> {{ item.item.name }}
                 </span>
-                <span class="text-[11px] uppercase tracking-wider text-gray-400 font-semibold mt-1">Giá bán: ${{ item.item.sellPrice }}</span>
+                <span class="text-[11px] uppercase tracking-wider text-gray-400 font-semibold mt-1">Giá bán: ${{ item.item.sellPrice }} | Sức chứa: {{ 32 / item.item.volume }}</span>
               </div>
               <div class="bg-gray-950 text-green-400 px-3 py-1 rounded-lg text-sm font-mono border border-gray-700 font-bold">
                 x{{ item.quantity }}
@@ -122,23 +122,28 @@ const clearSlot = (slotIndex: number) => {
               v-for="(slot, index) in activeShelf.slots" 
               :key="index"
               class="relative w-full aspect-[2/3] rounded-md border-2 overflow-hidden cursor-pointer group flex flex-col items-center justify-center transition-all shadow-sm shrink-0"
-              :class="slot.cardId ? 'bg-gradient-to-b from-blue-500 to-indigo-800 border-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'border-gray-700 border-dashed hover:border-indigo-400/50 hover:bg-indigo-900/20 bg-gray-800/30'"
+              :class="slot.itemId ? 'bg-gradient-to-b from-blue-500 to-indigo-800 border-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]' : 'border-gray-700 border-dashed hover:border-indigo-400/50 hover:bg-indigo-900/20 bg-gray-800/30'"
               @click="handleSlotClickWithShift($event, index)"
             >
                <!-- Delete button if filled -->
                <button 
-                 v-if="slot.cardId" 
+                 v-if="slot.itemId" 
                  @click.stop="clearSlot(index)"
                  class="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-600 border-2 border-white text-white rounded-full flex items-center justify-center font-bold text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:scale-110 shadow-lg"
                  title="Thu về kho"
                >✕</button>
 
-               <div v-if="slot.cardId" class="text-center w-full p-0.5 flex flex-col h-full justify-center opacity-95 group-hover:opacity-100">
-                 <div class="text-3xl leading-none drop-shadow-md pb-1">
-                   🎁
+               <div v-if="slot.itemId && gameStore.shopItems[slot.itemId]" class="text-center w-full p-0.5 flex flex-col h-full justify-between items-center opacity-95 group-hover:opacity-100 py-1.5">
+                 <div class="w-full px-1">
+                   <div class="w-full bg-black/50 rounded-full h-1.5 flex overflow-hidden border border-black/30">
+                     <div class="bg-yellow-400 h-full" :style="{ width: `${slot.quantity * gameStore.shopItems[slot.itemId].volume / 32 * 100}%` }"></div>
+                   </div>
                  </div>
-                 <div class="text-[9px] font-bold text-white tracking-widest uppercase mt-1">
-                   Pack
+                 <div class="text-3xl leading-none drop-shadow-md">
+                   {{ gameStore.shopItems[slot.itemId].type === 'box' ? '📦' : '🎁' }}
+                 </div>
+                 <div class="text-[10px] font-bold bg-gray-950 px-2 py-0.5 rounded shadow-inner border border-gray-600 text-yellow-400 tracking-widest mt-1">
+                   x{{ slot.quantity }}
                  </div>
                </div>
                <div v-else class="text-gray-600 font-black opacity-30 text-xs">
