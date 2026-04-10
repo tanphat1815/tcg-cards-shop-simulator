@@ -1,8 +1,32 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '../stores/gameStore'
 
 const gameStore = useGameStore()
+
+// Clock logic
+let clockInterval: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  clockInterval = setInterval(() => {
+    // 0.5s real time = 5 mins game time
+    if (gameStore.shopState === 'OPEN') {
+      gameStore.tickTime(5)
+    }
+  }, 500)
+})
+
+onUnmounted(() => {
+  if (clockInterval) clearInterval(clockInterval)
+})
+
+const formattedTime = computed(() => {
+  const mins = gameStore.timeInMinutes
+  const hours = Math.floor(mins / 60)
+  const remainingMins = mins % 60
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours)
+  return `${displayHours.toString().padStart(2, '0')}:${remainingMins.toString().padStart(2, '0')} ${ampm}`
+})
 
 const handleOpenPack = () => {
   gameStore.openPack()
@@ -24,6 +48,19 @@ const inventoryDetails = computed(() => {
 
 <template>
   <div class="absolute top-0 left-0 p-6 w-full h-full pointer-events-none flex flex-col justify-between z-10 box-border">
+    <!-- Top-Center: Clock & Day -->
+    <div class="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-auto bg-gray-900/90 backdrop-blur border-2 border-gray-700/80 rounded-2xl px-8 py-3 shadow-2xl flex flex-col items-center min-w-[200px]">
+      <div class="text-gray-400 font-bold uppercase tracking-widest text-sm mb-1">
+        Ngày {{ gameStore.currentDay }}
+      </div>
+      <div class="text-3xl font-black tabular-nums tracking-wider" :class="gameStore.shopState === 'OPEN' ? 'text-white' : 'text-red-500'">
+        {{ formattedTime }}
+      </div>
+      <div class="text-[10px] uppercase font-black tracking-widest mt-1" :class="gameStore.shopState === 'OPEN' ? 'text-green-400' : 'text-red-500'">
+        {{ gameStore.shopState === 'OPEN' ? 'MỞ CỬA' : 'ĐÓNG CỬA' }}
+      </div>
+    </div>
+
     <!-- Top-left: Balance & Stats -->
     <div class="pointer-events-auto bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-sm">
       <h2 class="text-xl font-bold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent mb-3">Shop Manager</h2>

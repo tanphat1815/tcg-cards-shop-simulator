@@ -29,7 +29,16 @@ export const useGameStore = defineStore('game', {
     waitingQueue: [] as number[],
     isOpeningPack: false,
     currentPack: [] as CardData[],
-    allCards: cardsData as CardData[]
+    allCards: cardsData as CardData[],
+    // Day cycle
+    currentDay: 1,
+    timeInMinutes: 480, // 8:00 AM
+    showEndDayModal: false,
+    dailyStats: {
+      revenue: 0,
+      customersServed: 0,
+      itemsSold: 0
+    }
   }),
   actions: {
     loadSave() {
@@ -40,6 +49,9 @@ export const useGameStore = defineStore('game', {
           this.money = parsed.money ?? 1000
           this.inventory = parsed.inventory ?? {}
           this.shelves = parsed.shelves ?? { shelf1: null, shelf2: null }
+          this.currentDay = parsed.currentDay ?? 1
+          this.timeInMinutes = parsed.timeInMinutes ?? 480
+          this.shopState = parsed.shopState ?? 'OPEN'
         } catch (e) {
           console.error("Lỗi khi đọc file save", e)
         }
@@ -67,6 +79,9 @@ export const useGameStore = defineStore('game', {
         this.waitingCustomers--
         const price = this.waitingQueue.shift() || 0
         this.addMoney(price)
+        // Cập nhật stats
+        this.dailyStats.customersServed++
+        this.dailyStats.revenue += price
       }
     },
     placeItemOnShelf(shelfId: 'shelf1' | 'shelf2') {
@@ -103,6 +118,7 @@ export const useGameStore = defineStore('game', {
         if (shelf.quantity === 0) {
           this.shelves[shelfId] = null
         }
+        this.dailyStats.itemsSold++
         return cardId
       }
       return null
@@ -140,6 +156,23 @@ export const useGameStore = defineStore('game', {
     closePackOpening() {
       this.isOpeningPack = false
       this.currentPack = []
+    },
+    tickTime(minutes: number) {
+      if (this.shopState === 'OPEN') {
+        this.timeInMinutes += minutes
+        // 8:00 PM = 20 * 60 = 1200
+        if (this.timeInMinutes >= 1200) {
+          this.timeInMinutes = 1200
+          this.shopState = 'CLOSED'
+        }
+      }
+    },
+    startNewDay() {
+      this.currentDay++
+      this.timeInMinutes = 480 // 8:00 AM
+      this.shopState = 'OPEN'
+      this.showEndDayModal = false
+      this.dailyStats = { revenue: 0, customersServed: 0, itemsSold: 0 }
     }
   }
 })

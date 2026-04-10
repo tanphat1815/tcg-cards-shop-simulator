@@ -127,6 +127,7 @@ export default class MainScene extends Phaser.Scene {
   }
 
   spawnCustomer() {
+    if (useGameStore().shopState !== 'OPEN') return
     if (this.customers.length >= 10) return
 
     const npcSprite = this.physics.add.sprite(400, 600, 'npc')
@@ -215,6 +216,11 @@ export default class MainScene extends Phaser.Scene {
        cust.targetX = 600
        cust.targetY = 220 + idx * 45
     })
+
+    // Auto Show End Day Modal
+    if (store.shopState === 'CLOSED' && this.customers.length === 0 && store.waitingCustomers === 0 && !store.showEndDayModal) {
+      store.showEndDayModal = true
+    }
 
     // NPC Logic
     for (let i = this.customers.length - 1; i >= 0; i--) {

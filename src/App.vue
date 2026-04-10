@@ -3,6 +3,7 @@ import { onMounted } from 'vue'
 import GameContainer from './components/GameContainer.vue'
 import UIOverlay from './components/UIOverlay.vue'
 import PackOpeningOverlay from './components/PackOpeningOverlay.vue'
+import EndOfDayModal from './components/EndOfDayModal.vue'
 import { useGameStore } from './stores/gameStore'
 
 const store = useGameStore()
@@ -25,5 +26,6 @@ onMounted(() => {
     <GameContainer />
     <UIOverlay />
     <PackOpeningOverlay />
+    <EndOfDayModal />
   </div>
 </template>
