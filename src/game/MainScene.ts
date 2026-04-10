@@ -1,5 +1,9 @@
 import Phaser from 'phaser'
 import { useGameStore } from '../stores/gameStore'
+import playerImg from '../assets/images/player.svg'
+import npcImg from '../assets/images/npc.svg'
+import shelfImg from '../assets/images/shelf.svg'
+import cashierImg from '../assets/images/cashier.svg'
 
 type NPCState = 'SPAWN' | 'WANDER' | 'SEEK_ITEM' | 'INTERACT' | 'GO_CASHIER' | 'WAITING' | 'LEAVE'
 
@@ -33,34 +37,35 @@ export default class MainScene extends Phaser.Scene {
     super({ key: 'MainScene' })
   }
 
+  preload() {
+    this.load.spritesheet('player', playerImg, { frameWidth: 32, frameHeight: 32 })
+    this.load.spritesheet('npc', npcImg, { frameWidth: 32, frameHeight: 32 })
+    this.load.image('shelf', shelfImg)
+    this.load.image('cashier', cashierImg)
+  }
+
   create() {
     this.cameras.main.setBackgroundColor('#2ecc71')
 
-    // Texture Player
-    const playerGraphics = this.make.graphics({ x: 0, y: 0 })
-    playerGraphics.fillStyle(0xffffff, 1)
-    playerGraphics.fillRect(0, 0, 32, 32)
-    playerGraphics.generateTexture('playerBox', 32, 32)
-    
-    // Texture NPC
-    const npcGraphics = this.make.graphics({ x: 0, y: 0 })
-    npcGraphics.fillStyle(0xff0000, 1)
-    npcGraphics.fillRect(0, 0, 32, 32)
-    npcGraphics.generateTexture('npcBox', 32, 32)
+    // Animations
+    const anims = this.anims
+    anims.create({ key: 'player-down', frames: anims.generateFrameNumbers('player', { start: 0, end: 2 }), frameRate: 8, repeat: -1 })
+    anims.create({ key: 'player-left', frames: anims.generateFrameNumbers('player', { start: 3, end: 5 }), frameRate: 8, repeat: -1 })
+    anims.create({ key: 'player-right', frames: anims.generateFrameNumbers('player', { start: 6, end: 8 }), frameRate: 8, repeat: -1 })
+    anims.create({ key: 'player-up', frames: anims.generateFrameNumbers('player', { start: 9, end: 11 }), frameRate: 8, repeat: -1 })
 
-    // Texture Shelf
-    const shelfGraphics = this.make.graphics({ x: 0, y: 0 })
-    shelfGraphics.fillStyle(0x8B4513, 1) // Nâu
-    shelfGraphics.fillRect(0, 0, 64, 48)
-    shelfGraphics.generateTexture('shelfBox', 64, 48)
+    anims.create({ key: 'npc-down', frames: anims.generateFrameNumbers('npc', { start: 0, end: 2 }), frameRate: 8, repeat: -1 })
+    anims.create({ key: 'npc-left', frames: anims.generateFrameNumbers('npc', { start: 3, end: 5 }), frameRate: 8, repeat: -1 })
+    anims.create({ key: 'npc-right', frames: anims.generateFrameNumbers('npc', { start: 6, end: 8 }), frameRate: 8, repeat: -1 })
+    anims.create({ key: 'npc-up', frames: anims.generateFrameNumbers('npc', { start: 9, end: 11 }), frameRate: 8, repeat: -1 })
 
     // Tạo Kệ hàng (Shelves) - Static physics
     this.shelvesGroup = this.physics.add.staticGroup()
     
-    const s1 = this.shelvesGroup.create(200, 150, 'shelfBox') as Phaser.Physics.Arcade.Sprite
+    const s1 = this.shelvesGroup.create(200, 150, 'shelf') as Phaser.Physics.Arcade.Sprite
     s1.setData('id', 'shelf1')
     
-    const s2 = this.shelvesGroup.create(500, 150, 'shelfBox') as Phaser.Physics.Arcade.Sprite
+    const s2 = this.shelvesGroup.create(500, 150, 'shelf') as Phaser.Physics.Arcade.Sprite
     s2.setData('id', 'shelf2')
 
     // Text báo hiệu trên kệ
@@ -69,16 +74,11 @@ export default class MainScene extends Phaser.Scene {
 
     // Tạo Quầy thu ngân (Cashier)
     this.cashierGroup = this.physics.add.staticGroup()
-    const cashierGraphics = this.make.graphics({ x: 0, y: 0 })
-    cashierGraphics.fillStyle(0x808080, 1) // Gray
-    cashierGraphics.fillRect(0, 0, 96, 32)
-    cashierGraphics.generateTexture('cashierBox', 96, 32)
-    
-    this.cashierDesk = this.cashierGroup.create(600, 180, 'cashierBox') as Phaser.Physics.Arcade.Sprite
+    this.cashierDesk = this.cashierGroup.create(600, 180, 'cashier') as Phaser.Physics.Arcade.Sprite
     this.cashierDesk.setData('id', 'cashier')
 
     // Player
-    this.player = this.physics.add.sprite(400, 300, 'playerBox')
+    this.player = this.physics.add.sprite(400, 300, 'player')
     this.player.setCollideWorldBounds(true)
 
     // Va chạm
@@ -129,7 +129,7 @@ export default class MainScene extends Phaser.Scene {
   spawnCustomer() {
     if (this.customers.length >= 10) return
 
-    const npcSprite = this.physics.add.sprite(400, 600, 'npcBox')
+    const npcSprite = this.physics.add.sprite(400, 600, 'npc')
     npcSprite.setCollideWorldBounds(true)
 
     this.customers.push({
@@ -202,6 +202,12 @@ export default class MainScene extends Phaser.Scene {
 
     if (isMoving) {
       this.player.body.velocity.normalize().scale(speed)
+      if (this.cursors.left.isDown) this.player.anims.play('player-left', true)
+      else if (this.cursors.right.isDown) this.player.anims.play('player-right', true)
+      else if (this.cursors.up.isDown) this.player.anims.play('player-up', true)
+      else if (this.cursors.down.isDown) this.player.anims.play('player-down', true)
+    } else {
+      this.player.anims.stop()
     }
 
     // Cập nhật targetY của các khách đang xếp hàng để tự dồn lên
@@ -215,6 +221,19 @@ export default class MainScene extends Phaser.Scene {
       const customer = this.customers[i]
       const sprite = customer.sprite
       const npcSpeed = 100
+
+      // Animation NPC
+      if (sprite.body && sprite.body.velocity.lengthSq() > 0) {
+        const vx = sprite.body.velocity.x
+        const vy = sprite.body.velocity.y
+        if (Math.abs(vx) > Math.abs(vy)) {
+           sprite.anims.play(vx < 0 ? 'npc-left' : 'npc-right', true)
+        } else {
+           sprite.anims.play(vy < 0 ? 'npc-up' : 'npc-down', true)
+        }
+      } else {
+        sprite.anims.stop()
+      }
 
       switch (customer.state) {
         case 'SPAWN':
