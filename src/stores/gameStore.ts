@@ -109,7 +109,7 @@ export const useGameStore = defineStore('game', {
     timeInMinutes: 480, // 8:00 AM
     showEndDayModal: false,
     expansionLevel: 0,
-    cashierPosition: { x: 200, y: 200 }, // Start at 200, 200 relative to world (0,0)
+    cashierPosition: { x: 1200, y: 1100 }, // Start at 1200, 1100 relative to world (0,0) - Inside 1000,1000 shop
   }),
   getters: {
     requiredExp: (state) => getRequiredExp(state.level),
@@ -142,8 +142,26 @@ export const useGameStore = defineStore('game', {
           }
           if (parsed.cashierPosition) {
             this.cashierPosition = parsed.cashierPosition
+            // Migration: if x < 500, it's likely the old (100,100) anchor system
+            if (this.cashierPosition.x < 500) {
+              this.cashierPosition.x += 900
+              this.cashierPosition.y += 900
+            }
           }
-          this.currentDay = parsed.currentDay ?? 1
+          
+          if (parsed.placedShelves) {
+            this.placedShelves = parsed.placedShelves
+            Object.values(this.placedShelves).forEach(s => {
+              if (s.x < 500) { s.x += 900; s.y += 900; }
+            })
+          }
+          
+          if (parsed.placedTables) {
+            this.placedTables = parsed.placedTables
+            Object.values(this.placedTables).forEach(t => {
+              if (t.x < 500) { t.x += 900; t.y += 900; }
+            })
+          }
           this.timeInMinutes = parsed.timeInMinutes ?? 480
           this.shopState = parsed.shopState ?? 'OPEN'
           this.level = parsed.level ?? 1

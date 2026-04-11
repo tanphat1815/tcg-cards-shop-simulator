@@ -114,6 +114,27 @@ export default class MainScene extends Phaser.Scene {
     this.player = this.physics.add.sprite(this.shopBounds.x + 100, this.shopBounds.y + 100, 'player')
     this.player.setCollideWorldBounds(true)
 
+    // Camera Follow
+    this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
+
+    // Drag to Pan logic
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.isDown) return
+      
+      // Chuột phải hoặc chuột giữa để kéo
+      if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
+        this.cameras.main.stopFollow()
+        this.cameras.main.scrollX -= (pointer.x - pointer.prevPosition.x) / this.cameras.main.zoom
+        this.cameras.main.scrollY -= (pointer.y - pointer.prevPosition.y) / this.cameras.main.zoom
+      }
+    })
+
+    // Reset Camera (Space)
+    const spaceKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
+    spaceKey?.on('down', () => {
+      this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
+    })
+
     // Va chạm
     this.physics.add.collider(this.player, this.shelvesGroup)
     this.physics.add.collider(this.player, this.tablesGroup)
@@ -170,8 +191,8 @@ export default class MainScene extends Phaser.Scene {
     
     const shopW = BASE_SHOP_WIDTH + extraW
     const shopH = BASE_SHOP_HEIGHT + extraH
-    const startX = 100
-    const startY = 100
+    const startX = 1000
+    const startY = 1000
     
     this.shopBounds = { x: startX, y: startY, w: shopW, h: shopH }
     this.doorLocation = { x: startX + shopW / 2, y: startY + shopH }
@@ -301,11 +322,11 @@ export default class MainScene extends Phaser.Scene {
 
   spawnCustomer() {
     if (useGameStore().shopState !== 'OPEN') return
-    if (this.customers.length >= 10) return
+    if (this.customers.length >= 15) return // Tăng giới hạn khách vì shop rộng hơn
 
     // Khách bắt đầu từ cửa
     const npcSprite = this.physics.add.sprite(this.doorLocation.x, this.doorLocation.y + 50, 'npc')
-    npcSprite.setCollideWorldBounds(true)
+    // npcSprite.setCollideWorldBounds(true) // Disable world bounds as we have physical walls
 
     const isPlayer = Math.random() < 0.3
 
