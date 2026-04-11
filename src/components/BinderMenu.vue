@@ -1,23 +1,29 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useGameStore } from '../stores/gameStore'
+import { useInventoryStore } from '../stores/modules/inventoryStore'
+import { useShopStore } from '../stores/modules/shopStore'
 
-const gameStore = useGameStore()
+const inventoryStore = useInventoryStore()
+const shopStore = useShopStore()
 
+/**
+ * Danh sách card đã sưu tập được, sắp xếp theo ID.
+ * @returns {Array} Danh sách các item trong binder.
+ */
 const binderItems = computed(() => {
-  return Object.keys(gameStore.personalBinder).map(cardId => {
-    const cardData = gameStore.allCards.find(c => c.id === cardId)
+  return Object.keys(inventoryStore.personalBinder).map(cardId => {
+    const cardData = inventoryStore.allCards.find(c => c.id === cardId)
     return {
       id: cardId,
       card: cardData,
-      quantity: gameStore.personalBinder[cardId]
+      quantity: inventoryStore.personalBinder[cardId]
     }
   }).filter(item => item.card !== undefined)
 })
 </script>
 
 <template>
-  <div v-if="gameStore.showBinderMenu" class="absolute inset-0 z-[150] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md pointer-events-auto p-8">
+  <div v-if="shopStore.showBinderMenu" class="absolute inset-0 z-[150] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md pointer-events-auto p-8">
     
     <!-- Header -->
     <div class="w-full max-w-6xl flex justify-between items-center mb-8 border-b border-indigo-900 pb-4">
@@ -25,7 +31,7 @@ const binderItems = computed(() => {
         <span>📔</span> PERSONAL BINDER
       </h2>
       <button 
-        @click="gameStore.showBinderMenu = false"
+        @click="shopStore.showBinderMenu = false"
         class="bg-gray-800 hover:bg-gray-700 text-white font-bold p-3 rounded-full border border-gray-600 shadow transition-transform hover:scale-110"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>

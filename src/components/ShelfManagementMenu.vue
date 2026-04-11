@@ -1,50 +1,110 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useGameStore } from '../stores/gameStore'
+import { useInventoryStore } from '../stores/modules/inventoryStore'
+import { useShopStore } from '../stores/modules/shopStore'
 import { STOCK_ITEMS } from '../config/shopData'
 
-const gameStore = useGameStore()
+const inventoryStore = useInventoryStore()
+const shopStore = useShopStore()
 const selectedItemId = ref<string | null>(null)
 
+/**
+ * Trả về dữ liệu của kệ đang được mở menu quản lý.
+ */
+const shelfData = computed(() => {
+  if (!shopStore.activeShelfId) return null
+  return shopStore.placedShelves[shopStore.activeShelfId]
+})
+
+/**
+ * Danh sách các vật phẩm có sẵn trong kho có thể bày lên kệ.
+ */
 const inventoryItems = computed(() => {
-  return Object.keys(gameStore.shopInventory)
+  return Object.keys(inventoryStore.shopInventory)
     .map(itemId => ({
       id: itemId,
-      item: STOCK_ITEMS[itemId],
-      quantity: gameStore.shopInventory[itemId]
+      item: STOCK_ITEMS[itemId as keyof typeof STOCK_ITEMS],
+      quantity: inventoryStore.shopInventory[itemId]
     }))
     .filter(x => x.item !== undefined && x.quantity > 0)
 })
 
-const activeShelf = computed(() => {
-  if (!gameStore.activeShelfId) return null
-  return gameStore.placedShelves[gameStore.activeShelfId]
-})
-
 const selectItem = (id: string) => { selectedItemId.value = id }
 
-// Add 1 item to tier
+/**
+ * Xử lý khi click vào một tầng kệ để đặt đồ.
+ */
 const handleTierClick = (tierIndex: number, event: MouseEvent) => {
-  if (!selectedItemId.value) return
+  if (!selectedItemId.value || !shopStore.activeShelfId) return
+  
   if (event.shiftKey) {
-    gameStore.fillTier(selectedItemId.value, tierIndex)
+    // Fill full tier
+    const shelf = shopStore.placedShelves[shopStore.activeShelfId]
+    const itemData = STOCK_ITEMS[selectedItemId.value as keyof typeof STOCK_ITEMS]
+    const tier = shelf.tiers[tierIndex]
+    const maxSlots = itemData.type === 'box' ? 4 : 32
+
+    if (tier.itemId === null || tier.itemId === selectedItemId.value) {
+      if (tier.itemId === null) {
+        tier.itemId = selectedItemId.value
+        tier.maxSlots = maxSlots
+      }
+      const spaceLeft = tier.maxSlots - tier.slots.length
+      const available = inventoryStore.shopInventory[selectedItemId.value] ?? 0
+      const toAdd = Math.min(spaceLeft, available)
+
+      for (let i = 0; i < toAdd; i++) {
+        tier.slots.push(selectedItemId.value)
+      }
+      inventoryStore.shopInventory[selectedItemId.value] -= toAdd
+      if (inventoryStore.shopInventory[selectedItemId.value] <= 0) {
+          delete inventoryStore.shopInventory[selectedItemId.value]
+          selectedItemId.value = null
+      }
+    }
   } else {
-    gameStore.moveToTierSlot(selectedItemId.value, tierIndex)
-  }
-  if (!gameStore.shopInventory[selectedItemId.value]) {
-    selectedItemId.value = null
+    // Add 1 item
+    const shelf = shopStore.placedShelves[shopStore.activeShelfId]
+    const itemData = STOCK_ITEMS[selectedItemId.value as keyof typeof STOCK_ITEMS]
+    const tier = shelf.tiers[tierIndex]
+
+    if (tier.itemId === null || tier.itemId === selectedItemId.value) {
+      if (tier.itemId === null) {
+        tier.itemId = selectedItemId.value
+        tier.maxSlots = itemData.type === 'box' ? 4 : 32
+      }
+      if (tier.slots.length < tier.maxSlots) {
+        tier.slots.push(selectedItemId.value)
+        inventoryStore.shopInventory[selectedItemId.value]--
+        if (inventoryStore.shopInventory[selectedItemId.value] <= 0) {
+            delete inventoryStore.shopInventory[selectedItemId.value]
+            selectedItemId.value = null
+        }
+      }
+    }
   }
 }
 
+/**
+ * Thu hồi toàn bộ hàng từ một tầng kệ về kho.
+ */
 const clearTier = (tierIndex: number) => {
-  if (!activeShelf.value) return
-  gameStore.clearTier(activeShelf.value.id, tierIndex)
+  if (!shelfData.value) return
+  const tier = shelfData.value.tiers[tierIndex]
+  if (!tier.itemId) return
+
+  inventoryStore.addItemsToInventory(tier.itemId, tier.slots.length)
+  tier.itemId = null
+  tier.slots = []
+  tier.maxSlots = 0
 }
 
-// Can we place selected item in this tier?
+/**
+ * Kiểm tra xem vật phẩm đang chọn có thể đặt vào tầng này không.
+ */
 const canPlaceInTier = (tierIndex: number) => {
-  if (!selectedItemId.value || !activeShelf.value) return false
-  const tier = activeShelf.value.tiers[tierIndex]
+  if (!selectedItemId.value || !shelfData.value) return false
+  const tier = shelfData.value.tiers[tierIndex]
   if (tier.itemId === null) return true
   if (tier.itemId === selectedItemId.value) return tier.slots.length < tier.maxSlots
   return false
@@ -52,38 +112,29 @@ const canPlaceInTier = (tierIndex: number) => {
 
 // Tier fill percentage
 const tierFillPct = (tierIndex: number): number => {
-  if (!activeShelf.value) return 0
-  const tier = activeShelf.value.tiers[tierIndex]
+  if (!shelfData.value) return 0
+  const tier = shelfData.value.tiers[tierIndex]
   if (!tier.itemId || tier.maxSlots === 0) return 0
   return (tier.slots.length / tier.maxSlots) * 100
 }
 
-// Visual grid columns for rendering pack slots inside a tier
-// Packs: 4 cols × N rows (max 32 = 4×8). Boxes: 4 slots side by side.
-const tierColumns = (tierIndex: number): number => {
-  if (!activeShelf.value) return 4
-  const tier = activeShelf.value.tiers[tierIndex]
-  if (!tier.itemId) return 4
-  const itemData = STOCK_ITEMS[tier.itemId]
-  return itemData?.type === 'box' ? 4 : 4 // always 4 columns
-}
 </script>
 
 <template>
-  <div v-if="gameStore.showShelfMenu && activeShelf"
+  <div v-if="shopStore.showShelfMenu && shelfData"
     class="absolute inset-0 z-[150] flex items-center justify-center bg-black/85 backdrop-blur-sm pointer-events-auto p-4">
     <div class="bg-gray-900 border-2 border-indigo-500/50 rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
 
       <!-- Header -->
       <div class="bg-gray-800 px-6 py-4 flex justify-between items-center border-b border-gray-700 shrink-0">
         <h2 class="text-2xl font-black text-white flex items-center gap-2">
-          🗄️ KỆ HÀNG &nbsp;<span class="text-indigo-400 text-base font-medium">({{ activeShelf.id }})</span>
+          🗄️ KỆ HÀNG &nbsp;<span class="text-indigo-400 text-base font-medium">({{ shelfData.id }})</span>
         </h2>
         <div class="flex items-center gap-3">
-          <button @click="gameStore.clearEntireShelf()" class="bg-red-900/60 hover:bg-red-700 text-red-200 text-xs font-bold px-4 py-2 uppercase tracking-wider rounded shadow transition-colors border border-red-700/50">
+          <button @click="shopStore.clearEntireShelf(shopStore.activeShelfId!)" class="bg-red-900/60 hover:bg-red-700 text-red-200 text-xs font-bold px-4 py-2 uppercase tracking-wider rounded shadow transition-colors border border-red-700/50">
             Rút tất cả về Kho
           </button>
-          <button @click="gameStore.closeShelfManagement()" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-colors">
+          <button @click="shopStore.closeShelfManagement()" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -138,7 +189,7 @@ const tierColumns = (tierIndex: number): number => {
 
           <!-- 3 Tiers -->
           <div
-            v-for="(tier, tierIdx) in activeShelf.tiers"
+            v-for="(tier, tierIdx) in shelfData.tiers"
             :key="tierIdx"
             class="rounded-xl border-2 overflow-hidden shrink-0 transition-all"
             :class="{

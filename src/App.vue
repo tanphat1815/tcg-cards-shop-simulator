@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import GameContainer from './components/GameContainer.vue'
 import UIOverlay from './components/UIOverlay.vue'
 import PackOpeningOverlay from './components/PackOpeningOverlay.vue'
@@ -10,32 +10,27 @@ import OnlineShopMenu from './components/OnlineShopMenu.vue'
 import DevModeMenu from './components/DevModeMenu.vue'
 import BuildMenu from './components/BuildMenu.vue'
 import SettingsModal from './components/SettingsModal.vue'
-import { useGameStore } from './stores/gameStore'
+import { saveSystem } from './utils/saveSystem'
 
-const store = useGameStore()
+/**
+ * Khởi tạo game và hệ thống tự động lưu.
+ */
+let saveInterval: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
-  store.loadSave()
+  // Tải dữ liệu đã lưu khi vào game
+  saveSystem.loadGame()
   
-  store.$subscribe((mutation, state) => {
-    localStorage.setItem('tcg-shop-save', JSON.stringify({
-      money: state.money,
-      shopInventory: state.shopInventory,
-      personalBinder: state.personalBinder,
-      purchasedFurniture: state.purchasedFurniture,
-      placedShelves: state.placedShelves,
-      currentDay: state.currentDay,
-      timeInMinutes: state.timeInMinutes,
-      shopState: state.shopState,
-      level: state.level,
-      currentExp: state.currentExp,
-      settings: state.settings,
-      expansionLevel: state.expansionLevel,
-      placedTables: state.placedTables,
-      hiredWorkers: state.hiredWorkers,
-      placedCashiers: state.placedCashiers
-    }))
-  }, { deep: true })
+  // Thiết lập tự động lưu sau mỗi 30 giây
+  saveInterval = setInterval(() => {
+    saveSystem.saveGame()
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (saveInterval) clearInterval(saveInterval)
+  // Lưu lần cuối trước khi thoát (nếu có thể)
+  saveSystem.saveGame()
 })
 </script>
 

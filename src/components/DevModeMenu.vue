@@ -1,25 +1,37 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useGameStore } from '../stores/gameStore'
+import { useStatsStore } from '../stores/modules/statsStore'
 
-const gameStore = useGameStore()
+const statsStore = useStatsStore()
 const isOpen = ref(false)
 
+/**
+ * Bật/tắt menu Dev Mode.
+ */
 const toggelDevMode = () => {
   isOpen.value = !isOpen.value
 }
 
+/**
+ * Hack thêm tiền cho mục đích test.
+ */
 const addMoney = (amount: number) => {
-  gameStore.addMoney(amount)
+  statsStore.money += amount
 }
 
+/**
+ * Tăng cấp độ nhanh.
+ */
 const addLevel = (levels: number) => {
-  gameStore.level += levels
-  gameStore.showLevelUpNext = true
+  statsStore.level += levels
+  // statsStore.showLevelUpNext = true (Nếu store có property này)
 }
 
+/**
+ * Bỏ qua ngày hiện tại.
+ */
 const nextDay = () => {
-  gameStore.startNewDay()
+  statsStore.timeInMinutes = 24 * 60 // Chuyển sang cuối ngày
 }
 </script>
 
