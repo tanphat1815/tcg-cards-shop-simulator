@@ -20,6 +20,13 @@ interface Customer {
   intent?: 'BUY' | 'PLAY';
   assignedTableId?: string | null;
   seatIndex?: number | null;
+  spawnTime: number;         // Time when NPC entered shop
+  lastDecisionTime: number;  // For periodic AI re-scans
+  statusText?: Phaser.GameObjects.Text; // Overhead popover
+  lastMoveAttemptTime?: number; // For stuck recovery logic
+  instanceId: string; // Persistent ID for this NPC
+  checkedShelfIds: string[]; // Remember shelves visited but empty
+  searchStartTime?: number; // Time when NPC started searching for a table/shelf
 }
 
 export default class MainScene extends Phaser.Scene {
@@ -153,8 +160,9 @@ export default class MainScene extends Phaser.Scene {
         up: Phaser.Input.Keyboard.KeyCodes.W,
         down: Phaser.Input.Keyboard.KeyCodes.S,
         left: Phaser.Input.Keyboard.KeyCodes.A,
-        right: Phaser.Input.Keyboard.KeyCodes.D
-      }) as typeof this.cursors
+        right: Phaser.Input.Keyboard.KeyCodes.D,
+        p: Phaser.Input.Keyboard.KeyCodes.P
+      }) as any
       
       this.keyE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E)
     }
@@ -202,9 +210,31 @@ export default class MainScene extends Phaser.Scene {
       if (state.waitingCustomers < lastWaitingCount) {
         if (this.cashierQueue.length > 0) {
           const servedCust = this.cashierQueue.shift()!
-          servedCust.state = 'LEAVE'
-          servedCust.targetX = this.doorLocation.x
-          servedCust.targetY = this.doorLocation.y + 50
+          
+          const rand = Math.random();
+          const store = useGameStore();
+          const hasFreeTable = Object.values(store.placedTables).some(t => t.occupants.includes(null));
+
+          if (rand < 0.3 && hasFreeTable) {
+            // Ở lại chơi bài
+            servedCust.intent = 'PLAY';
+            servedCust.state = 'WANT_TO_PLAY';
+          } else {
+            // Rời đi qua lối đi trung gian để tránh xuyên thấu
+            servedCust.state = 'LEAVE'
+            servedCust.targetX = servedCust.sprite.x;
+            servedCust.targetY = this.doorLocation.y - 100; // Lối đi trước quầy
+            this.time.addEvent({
+              delay: 800,
+              callback: () => {
+                if (servedCust.sprite.active) {
+                  servedCust.targetX = this.doorLocation.x;
+                  servedCust.targetY = this.doorLocation.y + 60;
+                  this.physics.moveTo(servedCust.sprite, servedCust.targetX, servedCust.targetY, 100);
+                }
+              }
+            })
+          }
         }
       }
       lastWaitingCount = state.waitingCustomers
@@ -375,6 +405,7 @@ export default class MainScene extends Phaser.Scene {
 
     const isPlayer = Math.random() < 0.3
 
+    const instanceId = `npc_${Date.now()}_${Math.floor(Math.random() * 1000)}`
     const newCust: Customer = {
       sprite: npcSprite,
       state: 'SPAWN' as NPCState,
@@ -382,15 +413,28 @@ export default class MainScene extends Phaser.Scene {
       targetX: this.doorLocation.x,
       targetY: this.doorLocation.y - 40, // Đi vào trong shop
       targetPrice: 0,
-      intent: isPlayer ? 'PLAY' : ('BUY' as any) // Cast appropriately
+      intent: isPlayer ? 'PLAY' : 'BUY',
+      spawnTime: this.time.now,
+      lastDecisionTime: this.time.now,
+      lastMoveAttemptTime: this.time.now,
+      instanceId,
+      checkedShelfIds: [],
+      searchStartTime: this.time.now
     }
-    // Correcting intent as well
-    newCust.intent = isPlayer ? 'PLAY' : 'BUY'
+
+    newCust.statusText = this.add.text(npcSprite.x, npcSprite.y - 35, '...', {
+        fontSize: '10px',
+        color: '#ffffff',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        padding: { x: 4, y: 2 }
+    }).setOrigin(0.5).setDepth(DEPTH.UI_TEXT).setVisible(true)
+
+    console.log(`[SPAWN] NPC spawned with intent: ${newCust.intent}`)
     this.customers.push(newCust)
 
     // Thêm va chạm
     this.physics.add.collider(npcSprite, this.shelvesGroup)
-    this.physics.add.collider(npcSprite, this.tablesGroup)
+    // Đã xóa va chạm với bàn để NPC có thể đi vào vị trí ngồi (ghế)
     this.physics.add.collider(npcSprite, this.wallsGroup)
 
     this.physics.moveTo(npcSprite, this.doorLocation.x, this.doorLocation.y - 40, 100)
@@ -400,6 +444,12 @@ export default class MainScene extends Phaser.Scene {
     if (!this.cursors || !this.player.body || !this.keyE) return
 
     const store = useGameStore()
+
+    // --- TỰ ĐỘNG DỌN DẸP KHÁCH MA (Mỗi 5 giây) & CẬP NHẬT NHÃN BÀN ---
+    if (time % 5000 < 20) {
+      this.cleanupGhostOccupants();
+    }
+    this.updateTableVisuals();
 
     // Bắt sự kiện ấn phím E (chỉ tính 1 lần ấn xuống JustDown)
     if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
@@ -454,7 +504,18 @@ export default class MainScene extends Phaser.Scene {
       this.editText.setVisible(true)
     } else {
       this.editText.setVisible(false)
+      // 6. Handle Debug Key P
+    if (this.input.keyboard && (this.cursors as any).p && Phaser.Input.Keyboard.JustDown((this.cursors as any).p)) {
+      const store = useGameStore()
+      this.cleanupGhostOccupants(); // Dọn dẹp ngay khi nhấn P
+      console.log("=== DIAGNOSTIC REPORT (Key P) ===")
+      console.log("Placed Tables Count:", Object.keys(store.placedTables).length)
+      console.log("Placed Tables Map:", JSON.parse(JSON.stringify(store.placedTables)))
+      console.log("NPC Customers Count:", this.customers.length)
+      console.log("NPC Intents:", this.customers.map((c, idx) => `NPC ${idx}: ${c.intent} (State: ${c.state})`).join(", "))
+      console.log("===============================")
     }
+  }
 
     // Cập nhật Text báo hiệu đồ trên kệ liên tục từ Store Pinia
     for (const [id, textObj] of Object.entries(this.shelfTexts)) {
@@ -528,7 +589,7 @@ export default class MainScene extends Phaser.Scene {
       const sprite = customer.sprite
       const npcSpeed = 100
 
-      // Animation NPC
+      // Animation NPC & Status Position
       if (sprite.body && sprite.body.velocity.lengthSq() > 0) {
         const vx = sprite.body.velocity.x
         const vy = sprite.body.velocity.y
@@ -541,12 +602,47 @@ export default class MainScene extends Phaser.Scene {
         sprite.anims.stop()
       }
 
+      // Status Position & Content
+      if (customer.statusText) {
+        customer.statusText.setPosition(sprite.x, sprite.y - 35)
+        
+        let label = '...'
+        switch (customer.state) {
+          case 'SPAWN': label = 'Entering...'; break;
+          case 'WANDER': label = customer.intent === 'PLAY' ? '🔍 Seeking Table' : '🔍 Seeking Cards'; break;
+          case 'SEEK_ITEM': label = '📦 Going to shelf'; break;
+          case 'INTERACT': label = '🛒 Picking items'; break;
+          case 'GO_CASHIER': label = '🛒 To Cashier'; break;
+          case 'WAITING': label = '⌛ Waiting in line'; break;
+          case 'SEEK_TABLE': label = '🃏 Going to table'; break;
+          case 'PLAYING': 
+            const store = useGameStore();
+            const table = customer.assignedTableId ? store.placedTables[customer.assignedTableId] : null;
+            label = (table && table.matchStartedAt) ? '🃏 Playing match' : '⌛ Waiting for Opponent'; 
+            break;
+          case 'LEAVE': label = (time - customer.spawnTime > 40000) ? '😒 Bored - Leaving' : '👋 Leaving'; break;
+        }
+        customer.statusText.setText(label)
+      }
+
+      // Stuck Recovery Logic (Every 500ms)
+      const moveStates: NPCState[] = ['WANDER', 'SEEK_ITEM', 'SEEK_TABLE', 'GO_CASHIER', 'LEAVE']
+      if (moveStates.includes(customer.state) && time > (customer.lastMoveAttemptTime || 0) + 500) {
+        customer.lastMoveAttemptTime = time
+        const dist = Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY)
+        const isStuck = sprite.body && sprite.body.velocity.lengthSq() < 100 // Speed < 10
+        
+        if (dist > 15 && isStuck) {
+           this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+        }
+      }
+
       switch (customer.state) {
         case 'SPAWN':
           if (time > customer.timer) {
             customer.state = customer.intent === 'PLAY' ? 'WANT_TO_PLAY' : 'WANDER'
-            customer.targetX = Phaser.Math.Between(this.shopBounds.x + 20, this.shopBounds.x + this.shopBounds.w - 20)
-            customer.targetY = Phaser.Math.Between(this.shopBounds.y + 20, this.shopBounds.y + this.shopBounds.h - 20)
+            customer.targetX = Phaser.Math.Between(this.shopBounds.x + 50, this.shopBounds.x + this.shopBounds.w - 50)
+            customer.targetY = Phaser.Math.Between(this.shopBounds.y + 50, this.shopBounds.y + this.shopBounds.h - 50)
             this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
           }
           break
@@ -555,33 +651,49 @@ export default class MainScene extends Phaser.Scene {
           // Tìm bàn trống
           const store = useGameStore()
           let bestTableId = null
-          for (const table of Object.values(store.placedTables)) {
-            // Safety check: table must have occupants array
-            if (table.occupants && table.occupants.includes(null)) {
+          const tables = Object.values(store.placedTables)
+
+          for (const table of tables) {
+            const hasSpace = table.occupants && table.occupants.includes(null)
+            if (hasSpace) {
               bestTableId = table.id
               break
             }
           }
-
           if (bestTableId) {
-            const seatIndex = store.joinTable(bestTableId, (customer as any).instanceId || `npc_${i}_${Date.now()}`)
+            const seatIndex = store.joinTable(bestTableId, customer.instanceId)
             if (seatIndex !== null) {
-               customer.state = 'SEEK_TABLE'
-               customer.assignedTableId = bestTableId
-               customer.seatIndex = seatIndex
-               const table = store.placedTables[bestTableId]
-               customer.targetX = seatIndex === 0 ? table.x - 30 : table.x + 30
-               customer.targetY = table.y
-               this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+                customer.state = 'SEEK_TABLE'
+                customer.assignedTableId = bestTableId
+                customer.seatIndex = seatIndex
+                const table = store.placedTables[bestTableId]
+                customer.targetX = seatIndex === 0 ? table.x - 22 : table.x + 22
+                customer.targetY = table.y
+                this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
             }
           } else {
-            // Không có bàn, đi lang thang 1 lúc rồi thử lại
-            customer.state = 'WANDER'
+            // Bỏ cuộc nếu tìm bàn quá lâu (10 giây)
+            const searchTime = time - (customer.searchStartTime || 0);
+            if (searchTime > 10000 || Math.random() < 0.2) {
+              if (Math.random() < 0.6) {
+                customer.intent = 'BUY'
+                customer.checkedShelfIds = []
+                customer.state = 'WANDER'
+                customer.searchStartTime = time
+              } else {
+                customer.state = 'LEAVE'
+                customer.targetX = this.doorLocation.x
+                customer.targetY = this.doorLocation.y + 100 // Ra xa hơn để không kẹt tường
+              }
+              this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+            } else {
+               customer.state = 'WANDER'
+            }
           }
           break
 
         case 'SEEK_TABLE':
-          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 12) {
             sprite.body!.velocity.set(0)
             customer.state = 'PLAYING'
             customer.timer = 0 // Wait for match start
@@ -628,35 +740,103 @@ export default class MainScene extends Phaser.Scene {
           break
 
         case 'WANDER':
-          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
-            sprite.body!.velocity.set(0)
-            
+          // Boredom logic: Leave after 45s of wandering/waiting
+          if (time - customer.spawnTime > 45000) {
+            customer.state = 'LEAVE'
+            customer.targetX = this.doorLocation.x
+            customer.targetY = this.doorLocation.y + 20
+            this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+            break
+          }
+
+          // Periodic target re-scanning (every 1.5s)
+          if (time > customer.lastDecisionTime + 1500) {
+            customer.lastDecisionTime = time
             const store = useGameStore()
-            let foundShelfId: string | null = null
-            // Check all placed shelves
-            for (const shelf of Object.values(store.placedShelves)) {
-              if (shelf.tiers.some(t => t.itemId && t.slots.length > 0)) {
-                foundShelfId = shelf.id
+
+            if (customer.intent === 'PLAY') {
+              // Re-check for tables
+              let bestTableId = null
+              const tables = Object.values(store.placedTables)
+              
+              for (const table of tables) {
+                if (table.occupants && table.occupants.includes(null)) {
+                  bestTableId = table.id
+                  break
+                }
+              }
+              if (bestTableId) {
+                const seatIndex = store.joinTable(bestTableId, customer.instanceId)
+                if (seatIndex !== null) {
+                  customer.state = 'SEEK_TABLE'
+                  customer.assignedTableId = bestTableId
+                  customer.seatIndex = seatIndex
+                  const table = store.placedTables[bestTableId]
+                  customer.targetX = seatIndex === 0 ? table.x - 22 : table.x + 22
+                  customer.targetY = table.y
+                  this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+                  break
+                }
+              } else {
+                // Đang lang thang tìm bàn mà vẫn không thấy
+                if (Math.random() < 0.3) {
+                  customer.intent = 'BUY'
+                  customer.checkedShelfIds = []
+                }
+              }
+            } else {
+              // Re-check for shelves with items
+              let foundShelfId: string | null = null
+              const shelves = Object.values(store.placedShelves)
+              
+              for (const shelf of shelves) {
+                // Chỉ tìm kệ chưa kiểm tra (Tránh Loop)
+                if (customer.checkedShelfIds.includes(shelf.id)) continue;
+
+                const hasItems = shelf.tiers.some(t => t.slots.length > 0)
+                if (hasItems) {
+                  foundShelfId = shelf.id
+                  break
+                }
+              }
+
+              if (foundShelfId) {
+                const shelf = store.placedShelves[foundShelfId]
+                customer.state = 'SEEK_ITEM'
+                customer.targetX = shelf.x
+                customer.targetY = shelf.y + 45
+                this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
                 break
+              } else {
+                // Không tìm thấy kệ nào có hàng HOẶC shop chưa có kệ nào
+                if (Math.random() < 0.4) {
+                  if (Math.random() < 0.5) {
+                    customer.intent = 'PLAY'
+                    customer.state = 'WANT_TO_PLAY'
+                    customer.searchStartTime = time
+                  } else {
+                    customer.state = 'LEAVE'
+                    customer.targetX = this.doorLocation.x
+                    customer.targetY = this.doorLocation.y + 100
+                    this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+                  }
+                  break
+                }
               }
             }
+          }
 
-            if (foundShelfId) {
-              const targetShelf = store.placedShelves[foundShelfId]
-              customer.state = 'SEEK_ITEM'
-              customer.targetX = targetShelf.x
-              customer.targetY = targetShelf.y + 30 // Đứng trước kệ
-            } else {
-              // Lượn tiếp nếu shop trống
-              customer.targetX = Phaser.Math.Between(this.shopBounds.x + 20, this.shopBounds.x + this.shopBounds.w - 20)
-              customer.targetY = Phaser.Math.Between(this.shopBounds.y + 20, this.shopBounds.y + this.shopBounds.h - 20)
-            }
+          // Continue wandering if no target found
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 12) {
+            sprite.body!.velocity.set(0)
+            customer.targetX = Phaser.Math.Between(this.shopBounds.x + 50, this.shopBounds.x + this.shopBounds.w - 50)
+            customer.targetY = Phaser.Math.Between(this.shopBounds.y + 50, this.shopBounds.y + this.shopBounds.h - 50)
             this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
           }
           break
 
         case 'SEEK_ITEM':
-          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 12) {
             sprite.body!.velocity.set(0)
             customer.state = 'INTERACT'
             customer.timer = time + 1000 // Xem hàng/lấy hàng trong 1s
@@ -669,7 +849,7 @@ export default class MainScene extends Phaser.Scene {
             // Tìm kệ khách đang đứng
             let shelfIdToTake = null
             for (const shelf of Object.values(store.placedShelves)) {
-               if (Phaser.Math.Distance.Between(sprite.x, sprite.y, shelf.x, shelf.y + 30) < 10) {
+               if (Phaser.Math.Distance.Between(sprite.x, sprite.y, shelf.x, shelf.y + 45) < 15) {
                  shelfIdToTake = shelf.id
                  break
                }
@@ -689,9 +869,31 @@ export default class MainScene extends Phaser.Scene {
               useGameStore().addWaitingCustomer(customer.targetPrice)
               this.cashierQueue.push(customer)
             } else {
-              customer.state = 'WANDER'
-              customer.targetX = Phaser.Math.Between(this.shopBounds.x + 20, this.shopBounds.x + this.shopBounds.w - 20)
-              customer.targetY = Phaser.Math.Between(this.shopBounds.y + 20, this.shopBounds.y + this.shopBounds.h - 20)
+              // Hụt hàng: Ghi nhớ kệ này và quyết định tiếp
+              if (shelfIdToTake) {
+                 customer.checkedShelfIds.push(shelfIdToTake);
+              }
+
+              const totalShelves = Object.keys(store.placedShelves).length;
+              if (customer.checkedShelfIds.length >= totalShelves) {
+                  // Đã kiểm tra hết toàn bộ kệ trong shop mà không có gì
+                  const rand = Math.random();
+                  if (rand < 0.4) {
+                      // Đổi ý định sang đi chơi bài
+                      customer.intent = 'PLAY';
+                      customer.state = 'WANT_TO_PLAY';
+                  } else {
+                      // Chán nản đi về
+                      customer.state = 'LEAVE';
+                      customer.targetX = this.doorLocation.x;
+                      customer.targetY = this.doorLocation.y + 50;
+                  }
+              } else {
+                  // Vẫn còn kệ chưa xem, đi lang thang tìm tiếp
+                  customer.state = 'WANDER'
+                  customer.targetX = Phaser.Math.Between(this.shopBounds.x + 20, this.shopBounds.x + this.shopBounds.w - 20)
+                  customer.targetY = Phaser.Math.Between(this.shopBounds.y + 20, this.shopBounds.y + this.shopBounds.h - 20)
+              }
             }
             this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
           }
@@ -717,7 +919,25 @@ export default class MainScene extends Phaser.Scene {
           break
 
         case 'LEAVE':
-          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 5) {
+          // Cleanup table occupancy if leaving
+          if (customer.assignedTableId && customer.seatIndex !== undefined) {
+             const gStore = useGameStore()
+             const table = gStore.placedTables[customer.assignedTableId]
+             if (table && table.occupants[customer.seatIndex!] === customer.instanceId) {
+                table.occupants[customer.seatIndex!] = null
+             }
+          }
+
+          // Failsafe: Force destroy if stuck in LEAVE for more than 15s
+          if (time - (customer.timer || 0) > 15000 && customer.state === 'LEAVE') {
+             if (customer.statusText) customer.statusText.destroy()
+             sprite.destroy()
+             this.customers.splice(i, 1)
+             break
+          }
+
+          if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 15) {
+            if (customer.statusText) customer.statusText.destroy()
             sprite.destroy()
             this.customers.splice(i, 1) 
           }
@@ -1112,5 +1332,47 @@ export default class MainScene extends Phaser.Scene {
     })
     
     return collided
+  }
+
+  private cleanupGhostOccupants() {
+    const store = useGameStore();
+    // Chỉ những NPC thực sự đang chơi hoặc đang tìm bàn mới được coi là hợp lệ
+    const validOccupants = this.customers
+      .filter(c => (c.state === 'PLAYING' || c.state === 'SEEK_TABLE' || c.state === 'WANT_TO_PLAY') && c.assignedTableId)
+      .map(c => c.instanceId);
+
+    Object.values(store.placedTables).forEach(table => {
+      table.occupants.forEach((occId, idx) => {
+        if (occId && !validOccupants.includes(occId)) {
+          console.log(`[CLEANUP] Flush ma ${occId} khỏi bàn ${table.id}`);
+          table.occupants[idx] = null;
+          // Nếu trận đấu đang diễn ra mà có ma bị đuổi, dừng trận đấu luôn
+          if (table.matchStartedAt) {
+             table.matchStartedAt = null;
+          }
+        }
+      });
+    });
+  }
+
+  private updateTableVisuals() {
+    const store = useGameStore();
+    Object.values(store.placedTables).forEach(tableData => {
+      const visual = this.tableVisuals[tableData.id];
+      if (visual) {
+        const occCount = tableData.occupants.filter(o => o !== null).length;
+        let statusStr = '';
+        if (tableData.matchStartedAt) {
+          statusStr = '🎮 ĐANG ĐẤU';
+        } else if (occCount === 0) {
+          statusStr = '🟢 TRỐNG';
+        } else if (occCount === 1) {
+          statusStr = '⌛ CHỜ... (1/2)';
+        } else {
+          statusStr = '🔴 ĐẦY';
+        }
+        visual.label.setText(`BÀN\n${occCount}/2\n${statusStr}`);
+      }
+    });
   }
 }
