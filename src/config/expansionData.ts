@@ -30,21 +30,16 @@ export const EXPANSIONS_LOT_A: ExpansionData[] = [
 
 export const BASE_SHOP_WIDTH = 400;
 export const BASE_SHOP_HEIGHT = 400;
-export const EXPANSION_UNIT = 40; // Pixels added per 1x1 expansion
+export const TILE_SIZE = 40;
+export const EXPANSION_WIDTH_STEP = 5 * TILE_SIZE;  // 200px
+export const EXPANSION_HEIGHT_STEP = 2 * TILE_SIZE; // 80px
 
 /**
  * Calculates extra width and height based on expansion level.
- * Alternates expanding width and height.
  */
 export const getExpansionDimensions = (level: number) => {
-  let extraW = 0;
-  let extraH = 0;
-  for (let i = 1; i <= level; i++) {
-    if (i % 2 === 1) {
-      extraW += EXPANSION_UNIT;
-    } else {
-      extraH += EXPANSION_UNIT;
-    }
-  }
-  return { extraW, extraH };
+  return { 
+    extraW: level * EXPANSION_WIDTH_STEP, 
+    extraH: level * EXPANSION_HEIGHT_STEP 
+  };
 };

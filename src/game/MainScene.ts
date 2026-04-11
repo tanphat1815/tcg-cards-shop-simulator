@@ -5,7 +5,7 @@ import npcImg from '../assets/images/npc.svg'
 import shelfImg from '../assets/images/shelf.svg'
 import cashierImg from '../assets/images/cashier.svg'
 import { WORKERS, SPEED_TO_MS } from '../config/workerData'
-import { BASE_SHOP_WIDTH, BASE_SHOP_HEIGHT, EXPANSION_UNIT, getExpansionDimensions } from '../config/expansionData'
+import { BASE_SHOP_WIDTH, BASE_SHOP_HEIGHT, TILE_SIZE, getExpansionDimensions } from '../config/expansionData'
 
 type NPCState = 'SPAWN' | 'WANDER' | 'SEEK_ITEM' | 'INTERACT' | 'GO_CASHIER' | 'WAITING' | 'LEAVE' | 'WANT_TO_PLAY' | 'SEEK_TABLE' | 'PLAYING'
 
@@ -40,6 +40,7 @@ export default class MainScene extends Phaser.Scene {
   private floorGraphics!: Phaser.GameObjects.Graphics
   private wallGraphics!: Phaser.GameObjects.Graphics
   private outsideGraphics!: Phaser.GameObjects.Graphics
+  private previewGraphics!: Phaser.GameObjects.Graphics
   private doorLocation = { x: 0, y: 0 }
   private shopBounds = { x: 0, y: 0, w: 0, h: 0 }
 
@@ -68,6 +69,7 @@ export default class MainScene extends Phaser.Scene {
     this.outsideGraphics = this.add.graphics()
     this.floorGraphics = this.add.graphics()
     this.wallGraphics = this.add.graphics()
+    this.previewGraphics = this.add.graphics()
 
     // Animations
     const anims = this.anims
@@ -139,9 +141,10 @@ export default class MainScene extends Phaser.Scene {
     gameStore.$subscribe((mutation, state) => {
       // Check Expansion
       if (state.expansionLevel !== lastExpansionLevel) {
-        this.refreshEnvironment()
         lastExpansionLevel = state.expansionLevel
       }
+      
+      this.refreshEnvironment()
 
       if (state.waitingCustomers < lastWaitingCount) {
         if (this.cashierQueue.length > 0) {
@@ -204,6 +207,55 @@ export default class MainScene extends Phaser.Scene {
     if (this.cashierDesk) {
       this.cashierDesk.setPosition(startX + shopW - 60, startY + 60)
     }
+
+    // DRAW PREVIEW
+    this.previewGraphics.clear()
+    if (store.settings.showExpansionPreview) {
+      const nextDim = getExpansionDimensions(store.expansionLevel + 1)
+      const nextW = BASE_SHOP_WIDTH + nextDim.extraW
+      const nextH = BASE_SHOP_HEIGHT + nextDim.extraH
+      
+      if (store.settings.expansionPreviewStyle === 'BLUEPRINT') {
+        this.previewGraphics.lineStyle(2, 0x00ffff, 0.4)
+        // Dash logic (simplified via multiple strokes if needed or manual)
+        // Phaser graphics doesn't have native dashed line but we can simulate
+        this.drawDashedRect(startX, startY, nextW, nextH, 0x00ffff)
+      } else {
+        // GLOW Style
+        // Outer glow
+        for (let i = 1; i <= 3; i++) {
+           this.previewGraphics.lineStyle(2 * i, 0xffffff, 0.1)
+           this.previewGraphics.strokeRect(startX - i, startY - i, nextW + i*2, nextH + i*2)
+        }
+        this.previewGraphics.lineStyle(2, 0xffffff, 0.8)
+        this.previewGraphics.strokeRect(startX, startY, nextW, nextH)
+      }
+    }
+  }
+
+  private drawDashedRect(x: number, y: number, w: number, h: number, color: number) {
+    const dashLen = 10
+    const gapLen = 5
+    this.previewGraphics.lineStyle(2, color, 0.5)
+    
+    const drawDashedLine = (x1: number, y1: number, x2: number, y2: number) => {
+      let curX = x1; let curY = y1
+      const angle = Math.atan2(y2 - y1, x2 - x1)
+      const cos = Math.cos(angle); const sin = Math.sin(angle)
+      const totalDist = Math.sqrt((x2-x1)**2 + (y2-y1)**2)
+      let dist = 0
+      while (dist < totalDist) {
+        this.previewGraphics.lineBetween(curX, curY, curX + cos * Math.min(dashLen, totalDist - dist), curY + sin * Math.min(dashLen, totalDist - dist))
+        curX += cos * (dashLen + gapLen)
+        curY += sin * (dashLen + gapLen)
+        dist += (dashLen + gapLen)
+      }
+    }
+
+    drawDashedLine(x, y, x + w, y)
+    drawDashedLine(x + w, y, x + w, y + h)
+    drawDashedLine(x + w, y + h, x, y + h)
+    drawDashedLine(x, y + h, x, y)
   }
 
   spawnCustomer() {

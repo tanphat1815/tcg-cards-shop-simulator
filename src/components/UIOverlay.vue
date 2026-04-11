@@ -105,6 +105,9 @@ const isInventoryMinimized = ref(false)
             <button @click="gameStore.showBuildMenu = true" class="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/10 transform hover:-translate-y-0.5 flex items-center justify-center gap-2" title="Mở menu xây dựng">
               <span class="text-xl">🔨</span>
             </button>
+            <button @click="gameStore.showSettings = true" class="bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700/50 font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-indigo-500/10 transform hover:-translate-y-0.5 flex items-center justify-center gap-2" title="Cài đặt">
+              <span class="text-xl">⚙️</span>
+            </button>
           </div>
 
           <div v-if="gameStore.waitingCustomers > 0" class="mt-5 bg-orange-900/50 border border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] text-orange-200 px-4 py-3 rounded-xl animate-pulse flex justify-between items-center">

@@ -9,6 +9,7 @@ import ShelfManagementMenu from './components/ShelfManagementMenu.vue'
 import OnlineShopMenu from './components/OnlineShopMenu.vue'
 import DevModeMenu from './components/DevModeMenu.vue'
 import BuildMenu from './components/BuildMenu.vue'
+import SettingsModal from './components/SettingsModal.vue'
 import { useGameStore } from './stores/gameStore'
 
 const store = useGameStore()
@@ -27,7 +28,10 @@ onMounted(() => {
       timeInMinutes: state.timeInMinutes,
       shopState: state.shopState,
       level: state.level,
-      currentExp: state.currentExp
+      currentExp: state.currentExp,
+      settings: state.settings,
+      placedTables: state.placedTables,
+      hiredWorkers: state.hiredWorkers
     }))
   }, { deep: true })
 })
@@ -44,5 +48,6 @@ onMounted(() => {
     <OnlineShopMenu />
     <DevModeMenu />
     <BuildMenu />
+    <SettingsModal />
   </div>
 </template>

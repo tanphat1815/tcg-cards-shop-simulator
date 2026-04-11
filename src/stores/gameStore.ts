@@ -98,6 +98,12 @@ export const useGameStore = defineStore('game', {
       customersServed: 0,
       itemsSold: 0
     },
+    // New Settings
+    showSettings: false,
+    settings: {
+      showExpansionPreview: true,
+      expansionPreviewStyle: 'GLOW' as 'BLUEPRINT' | 'GLOW'
+    },
     // Missing state properties causing TS errors
     currentDay: 1,
     timeInMinutes: 480, // 8:00 AM
@@ -129,6 +135,9 @@ export const useGameStore = defineStore('game', {
           }
           if (parsed.placedTables) {
              this.placedTables = parsed.placedTables
+          }
+          if (parsed.settings) {
+            this.settings = { ...this.settings, ...parsed.settings }
           }
           this.currentDay = parsed.currentDay ?? 1
           this.timeInMinutes = parsed.timeInMinutes ?? 480
