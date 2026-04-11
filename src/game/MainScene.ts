@@ -220,21 +220,9 @@ export default class MainScene extends Phaser.Scene {
             // Ở lại chơi bài
             servedCust.intent = 'PLAY';
             servedCust.state = 'WANT_TO_PLAY';
+            servedCust.searchStartTime = state.timeInMinutes; // Sử dụng time từ store cho đồng nhất
           } else {
-            // Rời đi qua lối đi trung gian để tránh xuyên thấu
-            servedCust.state = 'LEAVE'
-            servedCust.targetX = servedCust.sprite.x;
-            servedCust.targetY = this.doorLocation.y - 100; // Lối đi trước quầy
-            this.time.addEvent({
-              delay: 800,
-              callback: () => {
-                if (servedCust.sprite.active) {
-                  servedCust.targetX = this.doorLocation.x;
-                  servedCust.targetY = this.doorLocation.y + 60;
-                  this.physics.moveTo(servedCust.sprite, servedCust.targetX, servedCust.targetY, 100);
-                }
-              }
-            })
+            this.npcLeaveShop(servedCust);
           }
         }
       }
@@ -689,11 +677,8 @@ export default class MainScene extends Phaser.Scene {
                 customer.state = 'WANDER'
                 customer.searchStartTime = time
               } else {
-                customer.state = 'LEAVE'
-                customer.targetX = this.doorLocation.x
-                customer.targetY = this.doorLocation.y + 100 // Ra xa hơn để không kẹt tường
+                this.npcLeaveShop(customer)
               }
-              this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
             } else {
                customer.state = 'WANDER'
             }
@@ -739,10 +724,7 @@ export default class MainScene extends Phaser.Scene {
                   const xpText = this.add.text(myTable.x, myTable.y - 60, '+50 XP', { fontSize: '18px', color: '#f1c40f', fontStyle: 'bold' }).setOrigin(0.5)
                   this.tweens.add({ targets: xpText, y: xpText.y - 40, alpha: 0, duration: 2000, onComplete: () => xpText.destroy() })
                }
-               customer.state = 'LEAVE'
-               customer.targetX = this.doorLocation.x
-               customer.targetY = this.doorLocation.y + 50
-               this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+               this.npcLeaveShop(customer)
             }
           }
           break
@@ -750,10 +732,7 @@ export default class MainScene extends Phaser.Scene {
         case 'WANDER':
           // Boredom logic: Leave after 45s of wandering/waiting
           if (time - customer.spawnTime > 45000) {
-            customer.state = 'LEAVE'
-            customer.targetX = this.doorLocation.x
-            customer.targetY = this.doorLocation.y + 20
-            this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+            this.npcLeaveShop(customer)
             break
           }
 
@@ -823,10 +802,7 @@ export default class MainScene extends Phaser.Scene {
                     customer.state = 'WANT_TO_PLAY'
                     customer.searchStartTime = time
                   } else {
-                    customer.state = 'LEAVE'
-                    customer.targetX = this.doorLocation.x
-                    customer.targetY = this.doorLocation.y + 100
-                    this.physics.moveTo(sprite, customer.targetX, customer.targetY, npcSpeed)
+                    this.npcLeaveShop(customer)
                   }
                   break
                 }
@@ -890,11 +866,9 @@ export default class MainScene extends Phaser.Scene {
                       // Đổi ý định sang đi chơi bài
                       customer.intent = 'PLAY';
                       customer.state = 'WANT_TO_PLAY';
+                      customer.searchStartTime = time;
                   } else {
-                      // Chán nản đi về
-                      customer.state = 'LEAVE';
-                      customer.targetX = this.doorLocation.x;
-                      customer.targetY = this.doorLocation.y + 50;
+                      this.npcLeaveShop(customer);
                   }
               } else {
                   // Vẫn còn kệ chưa xem, đi lang thang tìm tiếp
@@ -945,9 +919,12 @@ export default class MainScene extends Phaser.Scene {
           }
 
           if (Phaser.Math.Distance.Between(sprite.x, sprite.y, customer.targetX, customer.targetY) < 15) {
-            if (customer.statusText) customer.statusText.destroy()
-            sprite.destroy()
-            this.customers.splice(i, 1) 
+            // CHỈ biến mất khi đã thực sự bước RA NGOÀI cửa (mục tiêu cuối cùng)
+            if (customer.targetY > this.doorLocation.y) {
+              if (customer.statusText) customer.statusText.destroy()
+              sprite.destroy()
+              this.customers.splice(i, 1) 
+            }
           }
           break
       }
@@ -1381,6 +1358,46 @@ export default class MainScene extends Phaser.Scene {
         }
         visual.label.setText(`BÀN\n${occCount}/2\n${statusStr}`);
       }
+    });
+  }
+
+  private npcLeaveShop(customer: Customer) {
+    if (!customer.sprite.active) return;
+    
+    const npcSpeed = 100;
+    customer.state = 'LEAVE';
+    customer.timer = this.time.now; // Reset timer for failsafe
+    
+    // Giai đoạn 1: Di chuyển tới đường trục an toàn phía trên cửa (Avoid walls)
+    // Tùy theo vị trí NPC mà chọn điểm buffer phù hợp
+    // Nếu NPC đang ở quá sát trục giữa cửa, nó sẽ đi thẳng. 
+    // Nếu NPC ở 2 bên, nó sẽ căn trục X trước.
+    
+    customer.targetX = customer.sprite.x;
+    customer.targetY = this.doorLocation.y - 120; // Luôn đứng trên vách tường 1 đoạn
+    this.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, npcSpeed);
+
+    // Giai đoạn 2: Sau 0.8s, đi tới điểm AXIS của cửa (Căn giữa)
+    this.time.addEvent({
+        delay: 800,
+        callback: () => {
+            if (customer.sprite.active) {
+                customer.targetX = this.doorLocation.x;
+                customer.targetY = this.doorLocation.y - 100; // Ngay tâm cửa nhưng bên trong shop
+                this.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, npcSpeed);
+                
+                // Giai đoạn 3: Sau thêm 1s nữa, bước thẳng ra ngoài (Xuyên cửa)
+                this.time.addEvent({
+                    delay: 1000,
+                    callback: () => {
+                        if (customer.sprite.active) {
+                            customer.targetY = this.doorLocation.y + 120; // Bước hẳn ra ngoài thế giới
+                            this.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, npcSpeed);
+                        }
+                    }
+                });
+            }
+        }
     });
   }
 }
