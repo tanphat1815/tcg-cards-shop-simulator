@@ -109,7 +109,7 @@ export const useGameStore = defineStore('game', {
     timeInMinutes: 480, // 8:00 AM
     showEndDayModal: false,
     expansionLevel: 0,
-    cashierPosition: { x: 1200, y: 1100 }, // Start at 1200, 1100 relative to world (0,0) - Inside 1000,1000 shop
+    cashierPosition: { x: 1100, y: 1100 }, // Centered in the new 3000x3000px world
   }),
   getters: {
     requiredExp: (state) => getRequiredExp(state.level),
@@ -137,31 +137,36 @@ export const useGameStore = defineStore('game', {
           if (parsed.placedTables) {
              this.placedTables = parsed.placedTables
           }
+          if (parsed.expansionLevel) {
+            this.expansionLevel = parsed.expansionLevel
+          }
           if (parsed.settings) {
             this.settings = { ...this.settings, ...parsed.settings }
           }
           if (parsed.cashierPosition) {
             this.cashierPosition = parsed.cashierPosition
-            // Migration: if x < 500, it's likely the old (100,100) anchor system
+            // Migration: If position is from the old system (top-left near 0,0)
             if (this.cashierPosition.x < 500) {
               this.cashierPosition.x += 900
               this.cashierPosition.y += 900
             }
           }
-          
+
+          // Migration for other furniture
           if (parsed.placedShelves) {
+            Object.values(parsed.placedShelves).forEach((shelf: any) => {
+              if (shelf.x < 500) { shelf.x += 900; shelf.y += 900; }
+            })
             this.placedShelves = parsed.placedShelves
-            Object.values(this.placedShelves).forEach(s => {
-              if (s.x < 500) { s.x += 900; s.y += 900; }
-            })
           }
-          
           if (parsed.placedTables) {
-            this.placedTables = parsed.placedTables
-            Object.values(this.placedTables).forEach(t => {
-              if (t.x < 500) { t.x += 900; t.y += 900; }
+            Object.values(parsed.placedTables).forEach((table: any) => {
+              if (table.x < 500) { table.x += 900; table.y += 900; }
             })
+            this.placedTables = parsed.placedTables
           }
+
+          this.currentDay = parsed.currentDay ?? 1
           this.timeInMinutes = parsed.timeInMinutes ?? 480
           this.shopState = parsed.shopState ?? 'OPEN'
           this.level = parsed.level ?? 1

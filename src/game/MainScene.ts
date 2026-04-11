@@ -29,6 +29,11 @@ export default class MainScene extends Phaser.Scene {
   private tablesGroup!: Phaser.Physics.Arcade.StaticGroup
   private cashierGroup!: Phaser.Physics.Arcade.StaticGroup
   private wallsGroup!: Phaser.Physics.Arcade.StaticGroup
+  private wallTop!: Phaser.GameObjects.Rectangle
+  private wallLeft!: Phaser.GameObjects.Rectangle
+  private wallRight!: Phaser.GameObjects.Rectangle
+  private wallBottomLeft!: Phaser.GameObjects.Rectangle
+  private wallBottomRight!: Phaser.GameObjects.Rectangle
   private cashierDesk!: Phaser.Physics.Arcade.Sprite
   private keyE!: Phaser.Input.Keyboard.Key
   private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
@@ -92,6 +97,21 @@ export default class MainScene extends Phaser.Scene {
     this.cashierGroup = this.physics.add.staticGroup()
     this.wallsGroup = this.physics.add.staticGroup()
 
+    // Khởi tạo 5 khối tường "vĩnh cửu" (tàng hình)
+    this.wallTop = this.add.rectangle(0, 0, 10, 10, 0x00ff00, 0)
+    this.wallLeft = this.add.rectangle(0, 0, 10, 10, 0x00ff00, 0)
+    this.wallRight = this.add.rectangle(0, 0, 10, 10, 0x00ff00, 0)
+    this.wallBottomLeft = this.add.rectangle(0, 0, 10, 10, 0x00ff00, 0)
+    this.wallBottomRight = this.add.rectangle(0, 0, 10, 10, 0x00ff00, 0)
+
+    // Kích hoạt vật lý cho chúng
+    const walls = [this.wallTop, this.wallLeft, this.wallRight, this.wallBottomLeft, this.wallBottomRight]
+    walls.forEach(w => {
+      this.physics.add.existing(w, true)
+      this.wallsGroup.add(w)
+    })
+    console.log("DEBUG: Physical walls initialized")
+
     // Tạo Quầy thu ngân (Cashier) - Vị trí tuyệt đối lấy từ Store
     this.cashierDesk = this.cashierGroup.create(gameStore.cashierPosition.x, gameStore.cashierPosition.y, 'cashier') as Phaser.Physics.Arcade.Sprite
     this.cashierDesk.setData('id', 'cashier')
@@ -111,29 +131,8 @@ export default class MainScene extends Phaser.Scene {
     })
 
     // Player
-    this.player = this.physics.add.sprite(this.shopBounds.x + 100, this.shopBounds.y + 100, 'player')
+    this.player = this.physics.add.sprite(this.shopBounds.x + 150, this.shopBounds.y + 150, 'player')
     this.player.setCollideWorldBounds(true)
-
-    // Camera Follow
-    this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
-
-    // Drag to Pan logic
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!pointer.isDown) return
-      
-      // Chuột phải hoặc chuột giữa để kéo
-      if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
-        this.cameras.main.stopFollow()
-        this.cameras.main.scrollX -= (pointer.x - pointer.prevPosition.x) / this.cameras.main.zoom
-        this.cameras.main.scrollY -= (pointer.y - pointer.prevPosition.y) / this.cameras.main.zoom
-      }
-    })
-
-    // Reset Camera (Space)
-    const spaceKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
-    spaceKey?.on('down', () => {
-      this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
-    })
 
     // Va chạm
     this.physics.add.collider(this.player, this.shelvesGroup)
@@ -161,17 +160,23 @@ export default class MainScene extends Phaser.Scene {
       loop: true
     })
 
+    // Camera Setup
+    this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
+    this.cameras.main.setZoom(1)
+    
     // Lắng nghe thay đổi store
     let lastWaitingCount = gameStore.waitingCustomers
     let lastExpansionLevel = gameStore.expansionLevel
+    let lastSettings = JSON.stringify(gameStore.settings)
 
     gameStore.$subscribe((mutation, state) => {
-      // Check Expansion
-      if (state.expansionLevel !== lastExpansionLevel) {
+      const currentSettings = JSON.stringify(state.settings)
+      // CHỈ gọi refreshEnvironment khi thực sự cần thiết
+      if (state.expansionLevel !== lastExpansionLevel || currentSettings !== lastSettings) {
         lastExpansionLevel = state.expansionLevel
+        lastSettings = currentSettings
+        this.refreshEnvironment()
       }
-      
-      this.refreshEnvironment()
 
       if (state.waitingCustomers < lastWaitingCount) {
         if (this.cashierQueue.length > 0) {
@@ -186,8 +191,10 @@ export default class MainScene extends Phaser.Scene {
   }
 
   private refreshEnvironment() {
-    const store = useGameStore()
-    const { extraW, extraH } = getExpansionDimensions(store.expansionLevel)
+    console.log("DEBUG: refreshEnvironment started")
+    try {
+      const store = useGameStore()
+      const { extraW, extraH } = getExpansionDimensions(store.expansionLevel)
     
     const shopW = BASE_SHOP_WIDTH + extraW
     const shopH = BASE_SHOP_HEIGHT + extraH
@@ -204,7 +211,7 @@ export default class MainScene extends Phaser.Scene {
     // Vẽ Outside
     this.outsideGraphics.clear()
     this.outsideGraphics.fillStyle(0x1a1a1a, 1) // Dark street
-    this.outsideGraphics.fillRect(startX - worldPad, startY - worldPad, shopW + worldPad * 2, shopH + worldPad * 2)
+    this.outsideGraphics.fillRect(0, 0, 3000, 3000)
     
     // Vẽ Floor
     this.floorGraphics.clear()
@@ -256,6 +263,12 @@ export default class MainScene extends Phaser.Scene {
         this.previewGraphics.strokeRect(startX, startY, nextW, nextH)
       }
     }
+
+    this.updatePhysicalWalls()
+    console.log("DEBUG: refreshEnvironment finished")
+    } catch (err) {
+      console.error("CRITICAL: refreshEnvironment failed!", err)
+    }
   }
 
   private drawDashedRect(x: number, y: number, w: number, h: number, color: number) {
@@ -281,52 +294,60 @@ export default class MainScene extends Phaser.Scene {
     drawDashedLine(x + w, y, x + w, y + h)
     drawDashedLine(x + w, y + h, x, y + h)
     drawDashedLine(x, y + h, x, y)
-    
-    this.updatePhysicalWalls()
   }
 
   private updatePhysicalWalls() {
-    this.wallsGroup.clear(true, true);
     const { x, y, w, h } = this.shopBounds;
-    const thickness = 40; // Đủ dày để không bị lọt qua khi lag
+    const thickness = 40;
+    const doorWidth = 80;
+    const sideWallWidth = (w - doorWidth) / 2;
+
+    console.log(`DEBUG: updatePhysicalWalls - ShopBounds X:${x} Y:${y} W:${w} H:${h}`);
+
+    const updateBody = (rect: Phaser.GameObjects.Rectangle) => {
+      if (rect && rect.body) {
+        (rect.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
+      } else {
+        console.warn("DEBUG: Wall body missing, re-initializing physics for rectangle");
+        this.physics.add.existing(rect, true);
+      }
+    };
 
     // Top wall
-    const top = this.add.rectangle(x + w / 2, y - thickness / 2, w, thickness, 0x000000, 0)
-    this.wallsGroup.add(top)
-    
-    // Left wall
-    const left = this.add.rectangle(x - thickness / 2, y + h / 2, thickness, h, 0x000000, 0)
-    this.wallsGroup.add(left)
-    
-    // Right wall
-    const right = this.add.rectangle(x + w + thickness / 2, y + h / 2, thickness, h, 0x000000, 0)
-    this.wallsGroup.add(right)
+    this.wallTop.setPosition(x + w / 2, y - thickness / 2);
+    this.wallTop.setSize(w, thickness);
+    updateBody(this.wallTop);
 
-    // Bottom wall (với khe cửa)
-    const doorWidth = 80
-    const sideWallWidth = (w - doorWidth) / 2
-    
+    // Left wall
+    this.wallLeft.setPosition(x - thickness / 2, y + h / 2);
+    this.wallLeft.setSize(thickness, h);
+    updateBody(this.wallLeft);
+
+    // Right wall
+    this.wallRight.setPosition(x + w + thickness / 2, y + h / 2);
+    this.wallRight.setSize(thickness, h);
+    updateBody(this.wallRight);
+
     // Bottom Left
-    const bLeft = this.add.rectangle(x + sideWallWidth / 2, y + h + thickness / 2, sideWallWidth, thickness, 0x000000, 0)
-    this.wallsGroup.add(bLeft)
-    
+    this.wallBottomLeft.setPosition(x + sideWallWidth / 2, y + h + thickness / 2);
+    this.wallBottomLeft.setSize(sideWallWidth, thickness);
+    updateBody(this.wallBottomLeft);
+
     // Bottom Right
-    const bRight = this.add.rectangle(x + w - sideWallWidth / 2, y + h + thickness / 2, sideWallWidth, thickness, 0x000000, 0)
-    this.wallsGroup.add(bRight)
-    
-    // NPC cũng cần va chạm với tường
-    this.customers.forEach(cust => {
-      this.physics.add.collider(cust.sprite, this.wallsGroup)
-    })
+    this.wallBottomRight.setPosition(x + w - sideWallWidth / 2, y + h + thickness / 2);
+    this.wallBottomRight.setSize(sideWallWidth, thickness);
+    updateBody(this.wallBottomRight);
+
+    console.log("DEBUG: updatePhysicalWalls - completed");
   }
 
   spawnCustomer() {
     if (useGameStore().shopState !== 'OPEN') return
-    if (this.customers.length >= 15) return // Tăng giới hạn khách vì shop rộng hơn
+    if (this.customers.length >= 10) return
 
     // Khách bắt đầu từ cửa
     const npcSprite = this.physics.add.sprite(this.doorLocation.x, this.doorLocation.y + 50, 'npc')
-    // npcSprite.setCollideWorldBounds(true) // Disable world bounds as we have physical walls
+    npcSprite.setCollideWorldBounds(true)
 
     const isPlayer = Math.random() < 0.3
 

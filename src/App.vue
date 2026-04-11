@@ -30,6 +30,7 @@ onMounted(() => {
       level: state.level,
       currentExp: state.currentExp,
       settings: state.settings,
+      expansionLevel: state.expansionLevel,
       placedTables: state.placedTables,
       hiredWorkers: state.hiredWorkers,
       cashierPosition: state.cashierPosition
