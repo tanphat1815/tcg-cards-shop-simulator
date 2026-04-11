@@ -84,5 +84,13 @@ export const FURNITURE_ITEMS: Record<string, FurnitureItemInfo> = {
     requiredLevel: 11,
     capacityStr: '96 Slots (6x16)',
     description: 'Kệ trung tâm 2 mặt cao cấp. Sinh lời cực mạnh.'
+  },
+  'play_table': {
+    id: 'play_table',
+    name: 'Play Table',
+    buyPrice: 400,
+    requiredLevel: 5,
+    capacityStr: '2 Players',
+    description: 'Bàn chơi bài cho khách hàng. Tạo XP thụ động khi có người thi đấu.'
   }
 };

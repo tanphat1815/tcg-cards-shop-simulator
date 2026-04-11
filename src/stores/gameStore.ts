@@ -46,12 +46,31 @@ const createShelf = (id: string, furnitureId: string, x: number, y: number): She
   tiers: [createEmptyTier(), createEmptyTier(), createEmptyTier()]
 })
 
+export interface PlayTableData {
+  id: string;
+  furnitureId: string;
+  x: number;
+  y: number;
+  occupants: (string | null)[]; // instanceIds of NPCs [seat0, seat1]
+  matchStartedAt: number | null; // global game time / timestamp
+}
+
+const createPlayTable = (id: string, furnitureId: string, x: number, y: number): PlayTableData => ({
+  id,
+  furnitureId,
+  x: x,
+  y: y,
+  occupants: [null, null],
+  matchStartedAt: null
+})
+
 export const useGameStore = defineStore('game', {
   state: () => ({
     money: 1000,
     shopInventory: {} as Record<string, number>, // itemId -> quantity
     personalBinder: {} as Record<string, number>, // cardId -> quantity
     placedShelves: {} as Record<string, ShelfData>,
+    placedTables: {} as Record<string, PlayTableData>,
     activeShelfId: null as string | null,
     showShelfMenu: false,
     showBinderMenu: false,
@@ -107,6 +126,9 @@ export const useGameStore = defineStore('game', {
                console.warn('Incompatible shelf data detected. Resetting shelves for Build Mode.')
                this.placedShelves = {}
             }
+          }
+          if (parsed.placedTables) {
+             this.placedTables = parsed.placedTables
           }
           this.currentDay = parsed.currentDay ?? 1
           this.timeInMinutes = parsed.timeInMinutes ?? 480
@@ -363,19 +385,31 @@ export const useGameStore = defineStore('game', {
       this.isBuildMode = false
       this.buildItemId = null
     },
-    placeFurniture(x: number, y: number) {
+    placePlayTable(x: number, y: number) {
       if (!this.buildItemId) return
+      const id = 'table_' + Date.now()
+      const newTable = createPlayTable(id, this.buildItemId, x, y)
+      this.placedTables[id] = newTable
+      // Note: buildItemId is cleaned up in placeFurniture
+    },
+    placeFurniture(x: number, y: number) {
+      const furnitureId = this.buildItemId
+      if (!furnitureId) return
       
-      const id = 'shelf_' + Date.now()
-      const newShelf = createShelf(id, this.buildItemId, x, y)
+      const isTable = furnitureId === 'play_table'
       
-      this.placedShelves[id] = newShelf
+      if (isTable) {
+        this.placePlayTable(x, y)
+      } else {
+        const id = 'shelf_' + Date.now()
+        this.placedShelves[id] = createShelf(id, furnitureId, x, y)
+      }
       
       // Remove from purchased
-      if (this.purchasedFurniture[this.buildItemId] > 0) {
-        this.purchasedFurniture[this.buildItemId]--
-        if (this.purchasedFurniture[this.buildItemId] === 0) {
-          delete this.purchasedFurniture[this.buildItemId]
+      if (this.purchasedFurniture[furnitureId] > 0) {
+        this.purchasedFurniture[furnitureId]--
+        if (this.purchasedFurniture[furnitureId] === 0) {
+          delete this.purchasedFurniture[furnitureId]
         }
       }
       
@@ -453,6 +487,31 @@ export const useGameStore = defineStore('game', {
       this.money -= config.cost
       this.expansionLevel = nextId
       return true
+    },
+    // --- Play Table Actions ---
+    joinTable(tableId: string, instanceId: string): number | null {
+      const table = this.placedTables[tableId]
+      if (!table) return null
+      
+      const seatIndex = table.occupants.indexOf(null)
+      if (seatIndex !== -1) {
+        table.occupants[seatIndex] = instanceId
+        return seatIndex
+      }
+      return null
+    },
+    startMatch(tableId: string) {
+       const table = this.placedTables[tableId]
+       if (table && table.occupants.every(o => o !== null)) {
+         table.matchStartedAt = Date.now()
+       }
+    },
+    finishMatch(tableId: string) {
+       const table = this.placedTables[tableId]
+       if (table) {
+         table.matchStartedAt = null
+         table.occupants = [null, null]
+       }
     }
   }
 })
