@@ -215,6 +215,10 @@ export const useGameStore = defineStore('game', {
       this.waitingCustomers++
       this.waitingQueue.push(price)
     },
+    forceEndDay() {
+      this.shopState = 'CLOSED'
+      this.showEndDayModal = true
+    },
     serveCustomer() {
       if (this.waitingCustomers > 0) {
         this.waitingCustomers--
@@ -611,6 +615,14 @@ export const useGameStore = defineStore('game', {
       this.shopState = 'OPEN'
       this.showEndDayModal = false
       this.dailyStats = { revenue: 0, customersServed: 0, itemsSold: 0 }
+      
+      // Reset hàng chờ và bàn chơi
+      this.waitingCustomers = 0
+      this.waitingQueue = []
+      Object.values(this.placedTables).forEach(table => {
+        table.occupants = [null, null]
+        table.matchStartedAt = null
+      })
     },
     buyExpansion() {
       const nextId = this.expansionLevel + 1

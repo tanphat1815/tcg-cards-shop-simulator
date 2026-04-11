@@ -72,6 +72,15 @@ const isInventoryMinimized = ref(false)
       <div class="text-[10px] uppercase font-black tracking-widest mt-1" :class="gameStore.shopState === 'OPEN' ? 'text-green-400' : 'text-red-500'">
         {{ gameStore.shopState === 'OPEN' ? 'MỞ CỬA' : 'ĐÓNG CỬA' }}
       </div>
+      
+      <!-- Manual End Day Button -->
+      <button 
+        v-if="gameStore.shopState === 'CLOSED'" 
+        @click="gameStore.forceEndDay()"
+        class="mt-3 w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white text-[11px] font-black py-2 px-4 rounded-xl shadow-[0_0_15px_rgba(239,68,68,0.4)] transition-all hover:scale-105 active:scale-95 animate-pulse uppercase tracking-wider pointer-events-auto border border-red-400/30"
+      >
+        📊 Tổng Kết Ngày
+      </button>
     </div>
 
     <!-- Top-left: Balance & Stats -->

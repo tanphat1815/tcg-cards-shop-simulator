@@ -197,6 +197,7 @@ export default class MainScene extends Phaser.Scene {
     let lastWaitingCount = gameStore.waitingCustomers
     let lastExpansionLevel = gameStore.expansionLevel
     let lastSettings = JSON.stringify(gameStore.settings)
+    let lastEndDayModalState = gameStore.showEndDayModal
 
     gameStore.$subscribe((mutation, state) => {
       const currentSettings = JSON.stringify(state.settings)
@@ -237,6 +238,16 @@ export default class MainScene extends Phaser.Scene {
           }
         }
       }
+      if (state.showEndDayModal && !lastEndDayModalState) {
+        // CLEANUP ALL NPCs FOR NEXT DAY
+        this.customers.forEach(c => {
+          if (c.statusText) c.statusText.destroy()
+          c.sprite.destroy()
+        })
+        this.customers = []
+        this.cashierQueue = []
+      }
+      lastEndDayModalState = state.showEndDayModal
       lastWaitingCount = state.waitingCustomers
     })
 
@@ -578,10 +589,7 @@ export default class MainScene extends Phaser.Scene {
        }
     })
 
-    // Auto Show End Day Modal
-    if (store.shopState === 'CLOSED' && this.customers.length === 0 && store.waitingCustomers === 0 && !store.showEndDayModal) {
-      store.showEndDayModal = true
-    }
+    // Removed: Auto Show End Day Modal (Now manual via button)
 
     // NPC Logic
     for (let i = this.customers.length - 1; i >= 0; i--) {
