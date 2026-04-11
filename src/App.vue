@@ -33,7 +33,7 @@ onMounted(() => {
       expansionLevel: state.expansionLevel,
       placedTables: state.placedTables,
       hiredWorkers: state.hiredWorkers,
-      cashierPosition: state.cashierPosition
+      placedCashiers: state.placedCashiers
     }))
   }, { deep: true })
 })

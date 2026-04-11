@@ -26,7 +26,7 @@ const startBuild = (id: string) => {
         <!-- Header -->
         <div class="bg-gray-800 px-8 py-5 flex justify-between items-center border-b border-gray-700">
           <h2 class="text-2xl font-black text-white flex items-center gap-3">
-            <span class="text-3xl">🔨</span> BUILD MENU
+            <span class="text-3xl">🏗️</span> SHOP SETUP
           </h2>
           <button @click="gameStore.showBuildMenu = false" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-all">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -34,10 +34,31 @@ const startBuild = (id: string) => {
         </div>
 
         <div class="p-8 overflow-y-auto">
-          <p class="text-gray-400 mb-6 font-medium italic">Chọn nội thất trong kho để đặt vào cửa hàng:</p>
+          <!-- Edit Mode Toggle Section -->
+          <div class="mb-8 p-6 bg-gray-800/80 border-2 border-gray-700 rounded-2xl flex items-center justify-between group hover:border-blue-500/50 transition-all">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="text-xl">🛠️</span> EDIT MODE
+              </h3>
+              <p class="text-xs text-gray-400 mt-1">Khi bật, bạn có thể click vào nội thất đã đặt để di chuyển hoặc cất đi.</p>
+            </div>
+            <button 
+              @click="gameStore.toggleEditMode()"
+              :class="[
+                'px-6 py-2 rounded-full font-black text-sm transition-all transform active:scale-95 shadow-lg',
+                gameStore.isEditMode 
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40 ring-4 ring-blue-500/20' 
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              ]"
+            >
+              {{ gameStore.isEditMode ? 'ON' : 'OFF' }}
+            </button>
+          </div>
+
+          <p class="text-gray-400 mb-6 font-medium italic border-l-4 border-green-500 pl-4">Chọn nội thất trong kho để đặt mới:</p>
           
           <div v-if="items.length === 0" class="text-center py-12 bg-gray-800/50 rounded-2xl border-2 border-dashed border-gray-700">
-            <p class="text-gray-500 text-lg">Kho nội thất trống rỗng. Hãy mua đồ ở Online Shop!</p>
+            <p class="text-gray-500 text-lg">Kho nội thất trống rỗng.</p>
           </div>
 
           <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">

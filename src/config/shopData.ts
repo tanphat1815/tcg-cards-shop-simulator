@@ -92,5 +92,13 @@ export const FURNITURE_ITEMS: Record<string, FurnitureItemInfo> = {
     requiredLevel: 5,
     capacityStr: '2 Players',
     description: 'Bàn chơi bài cho khách hàng. Tạo XP thụ động khi có người thi đấu.'
+  },
+  'cashier_desk': {
+    id: 'cashier_desk',
+    name: 'Cashier Desk',
+    buyPrice: 500,
+    requiredLevel: 1,
+    capacityStr: '1 Staff',
+    description: 'Quầy thu ngân tiêu chuẩn. Nơi khách mang hàng tới thanh toán.'
   }
 };

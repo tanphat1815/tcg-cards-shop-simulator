@@ -64,6 +64,20 @@ const createPlayTable = (id: string, furnitureId: string, x: number, y: number):
   matchStartedAt: null
 })
 
+export interface CashierData {
+  id: string;
+  furnitureId: string;
+  x: number;
+  y: number;
+}
+
+const createCashier = (id: string, furnitureId: string, x: number, y: number): CashierData => ({
+  id,
+  furnitureId,
+  x,
+  y
+})
+
 export const useGameStore = defineStore('game', {
   state: () => ({
     money: 1000,
@@ -77,6 +91,8 @@ export const useGameStore = defineStore('game', {
     showBuildMenu: false,
     isBuildMode: false,
     buildItemId: null as string | null,
+    isEditMode: false,
+    editFurnitureData: null as any, // Stores data of the item being moved
     shopState: 'CLOSED' as 'OPEN' | 'CLOSED',
     waitingCustomers: 0,
     waitingQueue: [] as number[],
@@ -109,7 +125,9 @@ export const useGameStore = defineStore('game', {
     timeInMinutes: 480, // 8:00 AM
     showEndDayModal: false,
     expansionLevel: 0,
-    cashierPosition: { x: 1100, y: 1100 }, // Centered in the new 3000x3000px world
+    placedCashiers: {
+      'cashier_default': createCashier('cashier_default', 'cashier_desk', 1100, 1100)
+    } as Record<string, CashierData>,
   }),
   getters: {
     requiredExp: (state) => getRequiredExp(state.level),
@@ -143,12 +161,14 @@ export const useGameStore = defineStore('game', {
           if (parsed.settings) {
             this.settings = { ...this.settings, ...parsed.settings }
           }
-          if (parsed.cashierPosition) {
-            this.cashierPosition = parsed.cashierPosition
-            // Migration: If position is from the old system (top-left near 0,0)
-            if (this.cashierPosition.x < 500) {
-              this.cashierPosition.x += 900
-              this.cashierPosition.y += 900
+          if (parsed.placedCashiers) {
+            this.placedCashiers = parsed.placedCashiers
+          } else if (parsed.cashierPosition) {
+            // Migration for old saves
+            const pos = parsed.cashierPosition
+            if (pos.x < 500) { pos.x += 900; pos.y += 900; }
+            this.placedCashiers = {
+              'cashier_default': createCashier('cashier_default', 'cashier_desk', pos.x, pos.y)
             }
           }
 
@@ -422,23 +442,43 @@ export const useGameStore = defineStore('game', {
       this.buildItemId = null
     },
     placePlayTable(x: number, y: number) {
-      if (!this.buildItemId) return
+      if (!this.buildItemId) return null
       const id = 'table_' + Date.now()
       const newTable = createPlayTable(id, this.buildItemId, x, y)
       this.placedTables[id] = newTable
-      // Note: buildItemId is cleaned up in placeFurniture
+      return newTable
     },
     placeFurniture(x: number, y: number) {
+      // Case 1: Re-placing an existing item in Edit Mode
+      if (this.editFurnitureData) {
+        const data = { ...this.editFurnitureData, x, y }
+        if (data.type === 'shelf') {
+          this.placedShelves[data.id] = data
+        } else if (data.type === 'cashier') {
+          this.placedCashiers[data.id] = data
+        } else {
+          this.placedTables[data.id] = data
+        }
+        this.editFurnitureData = null
+        this.isBuildMode = false
+        return data
+      }
+
+      // Case 2: Placing a new item from Build Menu
       const furnitureId = this.buildItemId
-      if (!furnitureId) return
+      if (!furnitureId) return null
       
-      const isTable = furnitureId === 'play_table'
-      
-      if (isTable) {
-        this.placePlayTable(x, y)
+      let placedData = null
+      if (furnitureId === 'play_table') {
+        placedData = this.placePlayTable(x, y)
+      } else if (furnitureId === 'cashier_desk') {
+        const id = 'cashier_' + Date.now()
+        placedData = createCashier(id, furnitureId, x, y)
+        this.placedCashiers[id] = placedData
       } else {
         const id = 'shelf_' + Date.now()
-        this.placedShelves[id] = createShelf(id, furnitureId, x, y)
+        placedData = createShelf(id, furnitureId, x, y)
+        this.placedShelves[id] = placedData
       }
       
       // Remove from purchased
@@ -450,6 +490,66 @@ export const useGameStore = defineStore('game', {
       }
       
       this.cancelBuildMode()
+      return placedData
+    },
+    toggleEditMode() {
+      this.isEditMode = !this.isEditMode
+      if (!this.isEditMode) {
+        this.editFurnitureData = null
+      }
+    },
+    pickUpFurniture(instanceId: string, type: 'shelf' | 'table' | 'cashier') {
+      if (type === 'shelf') {
+        const data = this.placedShelves[instanceId]
+        if (data) {
+          this.editFurnitureData = { ...data, type: 'shelf' }
+          delete this.placedShelves[instanceId]
+          this.isBuildMode = true // Reuse placement logic
+          return true
+        }
+      } else if (type === 'table') {
+        const data = this.placedTables[instanceId]
+        if (data) {
+          this.editFurnitureData = { ...data, type: 'table' }
+          delete this.placedTables[instanceId]
+          this.isBuildMode = true // Reuse placement logic
+          return true
+        }
+      } else if (type === 'cashier') {
+        const data = this.placedCashiers[instanceId]
+        if (data) {
+          this.editFurnitureData = { ...data, type: 'cashier' }
+          delete this.placedCashiers[instanceId]
+          this.isBuildMode = true
+          return true
+        }
+      }
+      return false
+    },
+    warehouseFurniture() {
+      if (!this.editFurnitureData) return
+      
+      const data = this.editFurnitureData
+      const furnitureId = data.furnitureId
+
+      // 1. Return items to shopInventory (if shelf)
+      if (data.type === 'shelf' && data.tiers) {
+        data.tiers.forEach((tier: any) => {
+          tier.slots.forEach((itemId: string | null) => {
+            if (itemId) {
+              this.shopInventory[itemId] = (this.shopInventory[itemId] || 0) + 1
+            }
+          })
+        })
+      }
+
+      // 2. Return the furniture item itself to purchasedFurniture
+      this.purchasedFurniture[furnitureId] = (this.purchasedFurniture[furnitureId] || 0) + 1
+
+      // 3. Cleanup
+      this.editFurnitureData = null
+      this.isBuildMode = false
+      this.buildItemId = null
     },
     // --- Staff Management ---
     hireWorker(workerId: string) {

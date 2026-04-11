@@ -6,6 +6,7 @@ import shelfImg from '../assets/images/shelf.svg'
 import cashierImg from '../assets/images/cashier.svg'
 import { WORKERS, SPEED_TO_MS } from '../config/workerData'
 import { BASE_SHOP_WIDTH, BASE_SHOP_HEIGHT, TILE_SIZE, getExpansionDimensions } from '../config/expansionData'
+import { DEPTH } from '../config/renderConfigs'
 
 type NPCState = 'SPAWN' | 'WANDER' | 'SEEK_ITEM' | 'INTERACT' | 'GO_CASHIER' | 'WAITING' | 'LEAVE' | 'WANT_TO_PLAY' | 'SEEK_TABLE' | 'PLAYING'
 
@@ -34,9 +35,9 @@ export default class MainScene extends Phaser.Scene {
   private wallRight!: Phaser.GameObjects.Rectangle
   private wallBottomLeft!: Phaser.GameObjects.Rectangle
   private wallBottomRight!: Phaser.GameObjects.Rectangle
-  private cashierDesk!: Phaser.Physics.Arcade.Sprite
   private keyE!: Phaser.Input.Keyboard.Key
   private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
+  private tableVisuals: Record<string, { rect: Phaser.GameObjects.Rectangle, label: Phaser.GameObjects.Text }> = {}
   private ghostSprite: Phaser.GameObjects.Sprite | null = null
   private ghostRectangle: Phaser.GameObjects.Rectangle | null = null
   private ghostText: Phaser.GameObjects.Text | null = null
@@ -47,8 +48,12 @@ export default class MainScene extends Phaser.Scene {
   private wallGraphics!: Phaser.GameObjects.Graphics
   private outsideGraphics!: Phaser.GameObjects.Graphics
   private previewGraphics!: Phaser.GameObjects.Graphics
+  private placementGraphics!: Phaser.GameObjects.Graphics
+  private editOverlay!: Phaser.GameObjects.Graphics
+  private editText!: Phaser.GameObjects.Text
   private doorLocation = { x: 0, y: 0 }
   private shopBounds = { x: 0, y: 0, w: 0, h: 0 }
+  private lastPlacementTime: number = 0
 
   private cursors!: {
     up: Phaser.Input.Keyboard.Key,
@@ -72,10 +77,11 @@ export default class MainScene extends Phaser.Scene {
     const gameStore = useGameStore()
 
     // Phông nền ngoài shop
-    this.outsideGraphics = this.add.graphics()
-    this.floorGraphics = this.add.graphics()
-    this.wallGraphics = this.add.graphics()
-    this.previewGraphics = this.add.graphics()
+    this.outsideGraphics = this.add.graphics().setDepth(DEPTH.OUTSIDE)
+    this.floorGraphics = this.add.graphics().setDepth(DEPTH.FLOOR)
+    this.wallGraphics = this.add.graphics().setDepth(DEPTH.WALL_GRAPHICS)
+    this.placementGraphics = this.add.graphics().setDepth(DEPTH.PLACEMENT_VISUALIZER)
+    this.previewGraphics = this.add.graphics().setDepth(DEPTH.PREVIEW)
 
     // Animations
     const anims = this.anims
@@ -112,9 +118,10 @@ export default class MainScene extends Phaser.Scene {
     })
     console.log("DEBUG: Physical walls initialized")
 
-    // Tạo Quầy thu ngân (Cashier) - Vị trí tuyệt đối lấy từ Store
-    this.cashierDesk = this.cashierGroup.create(gameStore.cashierPosition.x, gameStore.cashierPosition.y, 'cashier') as Phaser.Physics.Arcade.Sprite
-    this.cashierDesk.setData('id', 'cashier')
+    // Render các vật thể đã đặt từ Store
+    Object.values(gameStore.placedCashiers).forEach(cashierData => {
+      this.addCashierToScene(cashierData)
+    })
 
     // Thiết lập giới hạn thế giới rộng lớn (3000x3000px)
     this.physics.world.setBounds(0, 0, 3000, 3000)
@@ -132,7 +139,7 @@ export default class MainScene extends Phaser.Scene {
 
     // Player
     this.player = this.physics.add.sprite(this.shopBounds.x + 150, this.shopBounds.y + 150, 'player')
-    this.player.setCollideWorldBounds(true)
+    this.player.setCollideWorldBounds(true).setDepth(DEPTH.PLAYER)
 
     // Va chạm
     this.physics.add.collider(this.player, this.shelvesGroup)
@@ -159,6 +166,20 @@ export default class MainScene extends Phaser.Scene {
       callbackScope: this,
       loop: true
     })
+
+    this.input.keyboard?.on('keydown-X', () => {
+      gameStore.toggleEditMode()
+    })
+
+    // Edit Mode UI
+    this.editOverlay = this.add.graphics().setDepth(DEPTH.PREVIEW - 5).setScrollFactor(0)
+    this.editText = this.add.text(this.cameras.main.width / 2, 80, 'SHOP SETUP MODE', { 
+      fontSize: '32px', 
+      color: '#00ffff', 
+      fontStyle: 'bold',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      padding: { x: 20, y: 10 }
+    }).setOrigin(0.5).setDepth(DEPTH.UI_TEXT + 100).setScrollFactor(0).setVisible(false)
 
     // Camera Setup
     this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
@@ -188,6 +209,9 @@ export default class MainScene extends Phaser.Scene {
       }
       lastWaitingCount = state.waitingCustomers
     })
+
+    // Khởi tạo môi trường lần đầu
+    this.refreshEnvironment()
   }
 
   private refreshEnvironment() {
@@ -347,7 +371,7 @@ export default class MainScene extends Phaser.Scene {
 
     // Khách bắt đầu từ cửa
     const npcSprite = this.physics.add.sprite(this.doorLocation.x, this.doorLocation.y + 50, 'npc')
-    npcSprite.setCollideWorldBounds(true)
+    npcSprite.setCollideWorldBounds(true).setDepth(DEPTH.NPC)
 
     const isPlayer = Math.random() < 0.3
 
@@ -381,8 +405,18 @@ export default class MainScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
       
       // Tương tác Cashier
-      const distToCashier = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.cashierDesk.x, this.cashierDesk.y)
-      if (distToCashier < 80) {
+      let nearestCashier: Phaser.Physics.Arcade.Sprite | null = null
+      let minDist = 999
+      this.cashierGroup.getChildren().forEach(child => {
+        const c = child as Phaser.Physics.Arcade.Sprite
+        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y)
+        if (dist < minDist) {
+          minDist = dist
+          nearestCashier = c
+        }
+      })
+
+      if (nearestCashier && minDist < 80) {
         if (store.waitingCustomers > 0) {
           store.serveCustomer()
         }
@@ -400,13 +434,26 @@ export default class MainScene extends Phaser.Scene {
     // --- Auto Checkout Logic ---
     this.handleAutoCheckout(time)
 
-    // --- Build Mode Logic ---
-    if (store.isBuildMode) {
+    // --- Build & Edit Mode Logic ---
+    if (store.isBuildMode || store.isEditMode) {
       this.handleBuildMode()
-      return // Dừng các logic di chuyển khi đang ở Build Mode
+      return // Dừng các logic di chuyển khi đang ở Build/Edit Mode
     } else if (this.ghostSprite) {
       this.ghostSprite.destroy()
       this.ghostSprite = null
+    }
+
+    // Update Edit Mode UI
+    this.editOverlay.clear()
+    if (store.isEditMode) {
+      const sw = this.scale.width
+      const sh = this.scale.height
+      this.editOverlay.lineStyle(15, 0x00ffff, 0.4)
+      this.editOverlay.strokeRect(0, 0, sw, sh)
+      this.editText.setPosition(sw / 2, 80)
+      this.editText.setVisible(true)
+    } else {
+      this.editText.setVisible(false)
     }
 
     // Cập nhật Text báo hiệu đồ trên kệ liên tục từ Store Pinia
@@ -459,9 +506,15 @@ export default class MainScene extends Phaser.Scene {
     }
 
     // Cập nhật targetY của các khách đang xếp hàng để tự dồn lên
+    const primaryCashier = this.cashierGroup.getFirstAlive() as Phaser.Physics.Arcade.Sprite
     this.cashierQueue.forEach((cust, idx) => {
-       cust.targetX = 600
-       cust.targetY = 220 + idx * 45
+       if (primaryCashier) {
+         cust.targetX = primaryCashier.x
+         cust.targetY = primaryCashier.y + 110 + idx * 45
+       } else {
+         cust.targetX = 600
+         cust.targetY = 220 + idx * 45
+       }
     })
 
     // Auto Show End Day Modal
@@ -503,7 +556,8 @@ export default class MainScene extends Phaser.Scene {
           const store = useGameStore()
           let bestTableId = null
           for (const table of Object.values(store.placedTables)) {
-            if (table.occupants.includes(null)) {
+            // Safety check: table must have occupants array
+            if (table.occupants && table.occupants.includes(null)) {
               bestTableId = table.id
               break
             }
@@ -701,8 +755,14 @@ export default class MainScene extends Phaser.Scene {
       let targetY = 500 + (parseInt(hw.instanceId.split('_')[1]) % 100) // Tránh chồng lấn hoàn toàn
 
       if (hw.duty === 'CASHIER') {
-        targetX = 600
-        targetY = 150
+        const primaryCashier = this.cashierGroup.getFirstAlive() as Phaser.Physics.Arcade.Sprite
+        if (primaryCashier) {
+          targetX = primaryCashier.x
+          targetY = primaryCashier.y + 40
+        } else {
+          targetX = 600
+          targetY = 150
+        }
       } else if (hw.duty === 'STOCKER') {
         targetX = 100
         targetY = 550
@@ -757,7 +817,7 @@ export default class MainScene extends Phaser.Scene {
 
   private addShelfToScene(shelfData: any) {
     const shelf = this.shelvesGroup.create(shelfData.x, shelfData.y, 'shelf') as Phaser.Physics.Arcade.Sprite
-    shelf.setData('id', shelfData.id)
+    shelf.setData('id', shelfData.id).setDepth(DEPTH.FURNITURE)
     shelf.refreshBody()
 
     // Tạo text báo hiệu
@@ -765,39 +825,132 @@ export default class MainScene extends Phaser.Scene {
       fontSize: '12px', 
       color: '#fff', 
       backgroundColor: '#000' 
-    }).setOrigin(0.5)
+    }).setOrigin(0.5).setDepth(DEPTH.UI_TEXT)
   }
 
   private addTableToScene(tableData: any) {
-    // Vẽ bàn hình chữ nhật đơn giản
+    // Cleanup any existing visuals for this ID to prevent ghosting
+    if (this.tableVisuals[tableData.id]) {
+        this.tableVisuals[tableData.id].rect.destroy()
+        this.tableVisuals[tableData.id].label.destroy()
+        delete this.tableVisuals[tableData.id]
+    }
+
     const table = this.tablesGroup.create(tableData.x, tableData.y, undefined) as Phaser.Physics.Arcade.Sprite
     table.setSize(60, 40)
-    table.setVisible(false) // Chúng ta sẽ dùng graphics để vẽ cho đẹp hơn hoặc placeholder
+    table.setVisible(false)
+    table.setData('id', tableData.id).setDepth(DEPTH.TABLE)
 
-    const rect = this.add.rectangle(tableData.x, tableData.y, 60, 40, 0x7f8c8d).setStrokeStyle(2, 0x95a5a6)
-    const label = this.add.text(tableData.x, tableData.y, 'TABLE', { fontSize: '10px', color: '#fff' }).setOrigin(0.5)
-    
-    // Lưu reference để dọn dẹp nếu cần (optional)
+    const rect = this.add.rectangle(tableData.x, tableData.y, 60, 40, 0x7f8c8d).setStrokeStyle(2, 0x95a5a6).setData('id', tableData.id).setDepth(DEPTH.TABLE)
+    const label = this.add.text(tableData.x, tableData.y, 'TABLE', { fontSize: '10px', color: '#fff' }).setOrigin(0.5).setData('id', tableData.id).setDepth(DEPTH.UI_TEXT)
+
+    // Store visuals for cleanup
+    this.tableVisuals[tableData.id] = { rect, label }
+  }
+
+  private addCashierToScene(cashierData: any) {
+    const cashier = this.cashierGroup.create(cashierData.x, cashierData.y, 'cashier') as Phaser.Physics.Arcade.Sprite
+    cashier.setData('id', cashierData.id).setDepth(DEPTH.CASHIER)
+    cashier.refreshBody()
   }
 
   private handleBuildMode() {
     const store = useGameStore()
     const pointer = this.input.activePointer
 
-    // Tạo ghost nếu chưa có
+    // 1. Logic chọn đồ nếu đang ở Edit Mode và chưa cầm gì
+    if (store.isEditMode && !store.isBuildMode) {
+      if (pointer.isDown && this.time.now > (this.lastPlacementTime || 0) + 200) {
+        console.log(`DEBUG: Edit Mode Click at (${pointer.worldX.toFixed(0)}, ${pointer.worldY.toFixed(0)})`)
+        let found = false
+
+        // Kiểm tra click vào quầy thu ngân
+        this.cashierGroup.getChildren().forEach(child => {
+          const cashier = child as Phaser.Physics.Arcade.Sprite
+          if (cashier.getBounds().contains(pointer.worldX, pointer.worldY)) {
+            const id = cashier.getData('id')
+            if (store.pickUpFurniture(id, 'cashier')) {
+              found = true
+              cashier.destroy()
+              this.lastPlacementTime = this.time.now
+            }
+          }
+        })
+
+        // Kiểm tra click vào kệ
+        this.shelvesGroup.getChildren().forEach(child => {
+          const shelf = child as Phaser.Physics.Arcade.Sprite
+          const bounds = shelf.getBounds()
+          if (bounds.contains(pointer.worldX, pointer.worldY)) {
+            const id = shelf.getData('id')
+            console.log(`DEBUG: Clicked Shelf ID: ${id} at bounds: ${JSON.stringify(bounds)}`)
+            if (store.pickUpFurniture(id, 'shelf')) {
+              found = true
+              if (this.shelfTexts[id]) {
+                this.shelfTexts[id].destroy()
+                delete this.shelfTexts[id]
+              }
+              shelf.destroy()
+              this.lastPlacementTime = this.time.now
+            }
+          }
+        })
+        
+        // Kiểm tra click vào bàn
+        this.tablesGroup.getChildren().forEach(child => {
+          const table = child as Phaser.Physics.Arcade.Sprite
+          const tRect = new Phaser.Geom.Rectangle(table.x - 30, table.y - 20, 60, 40)
+          if (tRect.contains(pointer.worldX, pointer.worldY)) {
+            const id = table.getData('id')
+            console.log(`DEBUG: Clicked Table ID: ${id}`)
+            if (store.pickUpFurniture(id, 'table')) {
+              found = true
+              
+              // Xóa hình ảnh bóng ma của bàn
+              if (this.tableVisuals[id]) {
+                this.tableVisuals[id].rect.destroy()
+                this.tableVisuals[id].label.destroy()
+                delete this.tableVisuals[id]
+              }
+              
+              table.destroy()
+              this.lastPlacementTime = this.time.now
+            }
+          }
+        })
+
+        if (!found) {
+          console.log("DEBUG: No furniture found at click position")
+        }
+      }
+      return
+    }
+
+    if (!store.isBuildMode) {
+      this.placementGraphics.clear()
+      return
+    }
+
+    // 2. Tạo ghost nếu chưa có
     if (!this.ghostSprite && !this.ghostRectangle) {
-      if (store.buildItemId === 'play_table') {
+      const isTable = store.buildItemId === 'play_table' || store.editFurnitureData?.type === 'table'
+      const isCashier = store.buildItemId === 'cashier_desk' || store.editFurnitureData?.type === 'cashier'
+      
+      if (isTable) {
         this.ghostRectangle = this.add.rectangle(pointer.worldX, pointer.worldY, 60, 40, 0x7f8c8d).setStrokeStyle(2, 0x95a5a6)
-        this.ghostRectangle.setAlpha(0.6).setDepth(100)
+        this.ghostRectangle.setAlpha(0.6).setDepth(DEPTH.GHOST)
         this.ghostText = this.add.text(pointer.worldX, pointer.worldY, 'TABLE', { fontSize: '10px', color: '#fff' }).setOrigin(0.5)
-        this.ghostText.setAlpha(0.6).setDepth(101)
+        this.ghostText.setAlpha(0.6).setDepth(DEPTH.GHOST + 1)
+      } else if (isCashier) {
+        this.ghostSprite = this.add.sprite(pointer.worldX, pointer.worldY, 'cashier')
+        this.ghostSprite.setAlpha(0.6).setDepth(DEPTH.GHOST)
       } else {
         this.ghostSprite = this.add.sprite(pointer.worldX, pointer.worldY, 'shelf')
-        this.ghostSprite.setAlpha(0.6).setDepth(100)
+        this.ghostSprite.setAlpha(0.6).setDepth(DEPTH.GHOST)
       }
     }
 
-    // Cập nhật vị trí ghost
+    // 3. Cập nhật vị trí ghost
     if (this.ghostRectangle) {
       this.ghostRectangle.x = pointer.worldX
       this.ghostRectangle.y = pointer.worldY
@@ -810,10 +963,11 @@ export default class MainScene extends Phaser.Scene {
       this.ghostSprite.y = pointer.worldY
     }
 
-    // Kiểm tra va chạm
-    this.isPlacementValid = true
+    // 4. Hiển thị vùng cấm (Visualizer)
+    this.drawPlacementVisualizer()
 
-    // 0. Kiểm tra trong phạm vi shop
+    // 5. Kiểm tra va chạm
+    this.isPlacementValid = true
     const pad = 30
     const inBounds = pointer.worldX >= this.shopBounds.x + pad && 
                      pointer.worldX <= this.shopBounds.x + this.shopBounds.w - pad &&
@@ -822,18 +976,14 @@ export default class MainScene extends Phaser.Scene {
     
     if (!inBounds) this.isPlacementValid = false
 
-    // 1. Kiểm tra lấn sân quầy thu ngân
-    const distToCashier = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.cashierDesk.x, this.cashierDesk.y)
-    if (distToCashier < 80) this.isPlacementValid = false
+    if (this.isPlacementValid) {
+      const w = this.ghostRectangle ? 60 : 40
+      const h = this.ghostRectangle ? 40 : 40
+      if (this.checkCollision(pointer.worldX, pointer.worldY, w, h)) {
+        this.isPlacementValid = false
+      }
+    }
 
-    // 2. Kiểm tra chồng lấn các kệ khác
-    this.shelvesGroup.getChildren().forEach(child => {
-      const shelf = child as Phaser.Physics.Arcade.Sprite
-      const dist = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, shelf.x, shelf.y)
-      if (dist < 60) this.isPlacementValid = false
-    })
-
-    // 3. Kiểm tra gần Player (không đặt đè lên đầu mình)
     const distToPlayer = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.player.x, this.player.y)
     if (distToPlayer < 50) this.isPlacementValid = false
 
@@ -845,43 +995,122 @@ export default class MainScene extends Phaser.Scene {
       this.ghostSprite.setTint(color)
     }
 
-    // Click để đặt
-    if (pointer.isDown && this.isPlacementValid) {
-       const furnitureId = store.buildItemId
-       store.placeFurniture(pointer.worldX, pointer.worldY)
+    // 6. Click để đặt
+    if (pointer.isDown && this.isPlacementValid && this.time.now > (this.lastPlacementTime || 0) + 300) {
+       const placedData = store.placeFurniture(pointer.worldX, pointer.worldY)
+       this.lastPlacementTime = this.time.now
        
-       // Render ngay lập tức vật thể vừa đặt
-       if (furnitureId === 'play_table') {
-         this.addTableToScene(Object.values(store.placedTables).slice(-1)[0])
-       } else {
-         this.addShelfToScene(Object.values(store.placedShelves).slice(-1)[0])
+       if (placedData) {
+         if (placedData.furnitureId === 'play_table' || (placedData.type === 'table')) {
+           this.addTableToScene(placedData)
+         } else if (placedData.furnitureId === 'cashier_desk' || placedData.type === 'cashier') {
+           this.addCashierToScene(placedData)
+         } else {
+           this.addShelfToScene(placedData)
+         }
        }
 
-       if (this.ghostRectangle) {
-         this.ghostRectangle.destroy()
-         this.ghostRectangle = null
-         if (this.ghostText) this.ghostText.destroy()
-         this.ghostText = null
-       }
-       if (this.ghostSprite) {
-         this.ghostSprite.destroy()
-         this.ghostSprite = null
-       }
+       this.clearGhost()
     }
 
-    // Phím Esc để hủy (Hỗ trợ thêm)
-    if (this.input.keyboard && Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC))) {
-      store.cancelBuildMode()
-      if (this.ghostRectangle) {
-        this.ghostRectangle.destroy()
-        this.ghostRectangle = null
-        if (this.ghostText) this.ghostText.destroy()
-        this.ghostText = null
+    // Phím Esc để hủy
+    const escKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
+    const rightClick = pointer.rightButtonDown()
+
+    if (Phaser.Input.Keyboard.JustDown(escKey!) || rightClick) {
+      if (store.editFurnitureData) {
+        store.warehouseFurniture()
+      } else {
+        store.cancelBuildMode()
       }
-      if (this.ghostSprite) {
-        this.ghostSprite.destroy()
-        this.ghostSprite = null
-      }
+      this.clearGhost()
     }
+  }
+
+  private clearGhost() {
+    if (this.ghostRectangle) {
+      this.ghostRectangle.destroy()
+      this.ghostRectangle = null
+      if (this.ghostText) this.ghostText.destroy()
+      this.ghostText = null
+    }
+    if (this.ghostSprite) {
+      this.ghostSprite.destroy()
+      this.ghostSprite = null
+    }
+    this.placementGraphics.clear()
+  }
+
+  private drawPlacementVisualizer() {
+    this.placementGraphics.clear()
+    this.placementGraphics.fillStyle(0xff0000, 0.3)
+
+    // 1. Tường
+    this.wallsGroup.getChildren().forEach(child => {
+      const wall = child as Phaser.GameObjects.Rectangle
+      const bounds = wall.getBounds()
+      this.placementGraphics.fillRect(bounds.x, bounds.y, bounds.width, bounds.height)
+    })
+
+    // 2. Quầy thu ngân
+    this.cashierGroup.getChildren().forEach(child => {
+      const cashier = child as Phaser.Physics.Arcade.Sprite
+      if (useGameStore().editFurnitureData?.id === cashier.getData('id')) return
+      const cBounds = cashier.getBounds()
+      this.placementGraphics.fillRect(cBounds.x - 20, cBounds.y - 20, cBounds.width + 40, cBounds.height + 40)
+    })
+
+    // 3. Kệ hàng khác
+    this.shelvesGroup.getChildren().forEach(child => {
+      const shelf = child as Phaser.Physics.Arcade.Sprite
+      // Nếu đang bốc kệ này lên thì không vẽ vùng cấm của chính nó
+      if (useGameStore().editFurnitureData?.id === shelf.getData('id')) return
+      const bounds = shelf.getBounds()
+      this.placementGraphics.fillRect(bounds.x, bounds.y, bounds.width, bounds.height)
+    })
+    
+    // 4. Bàn khác
+    this.tablesGroup.getChildren().forEach(child => {
+      const table = child as Phaser.Physics.Arcade.Sprite
+      if (useGameStore().editFurnitureData?.id === table.getData('id')) return
+      this.placementGraphics.fillRect(table.x - 30, table.y - 20, 60, 40)
+    })
+  }
+
+  private checkCollision(x: number, y: number, width: number, height: number): boolean {
+    const rect = new Phaser.Geom.Rectangle(x - width/2, y - height/2, width, height)
+
+    // Check vs Walls
+    let collided = false
+    this.wallsGroup.getChildren().forEach(child => {
+       if (Phaser.Geom.Intersects.RectangleToRectangle(rect, (child as any).getBounds())) collided = true
+    })
+    if (collided) return true
+
+    // Check vs Cashier
+    this.cashierGroup.getChildren().forEach(child => {
+      const cashier = child as Phaser.Physics.Arcade.Sprite
+      if (useGameStore().editFurnitureData?.id === cashier.getData('id')) return
+      if (Phaser.Geom.Intersects.RectangleToRectangle(rect, cashier.getBounds())) collided = true
+    })
+    if (collided) return true
+
+    // Check vs other Shelves
+    this.shelvesGroup.getChildren().forEach(child => {
+      const shelf = child as Phaser.Physics.Arcade.Sprite
+      if (useGameStore().editFurnitureData?.id === shelf.getData('id')) return
+      if (Phaser.Geom.Intersects.RectangleToRectangle(rect, shelf.getBounds())) collided = true
+    })
+    if (collided) return true
+
+    // Check vs other Tables
+    this.tablesGroup.getChildren().forEach(child => {
+      const table = child as Phaser.Physics.Arcade.Sprite
+      if (useGameStore().editFurnitureData?.id === table.getData('id')) return
+      const tBounds = new Phaser.Geom.Rectangle(table.x - 30, table.y - 20, 60, 40)
+      if (Phaser.Geom.Intersects.RectangleToRectangle(rect, tBounds)) collided = true
+    })
+    
+    return collided
   }
 }
