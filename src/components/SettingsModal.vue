@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import { useGameStore } from '../stores/gameStore'
+import { useStatsStore } from '../stores/modules/statsStore'
 
-const gameStore = useGameStore()
+const statsStore = useStatsStore()
 
 const close = () => {
-  gameStore.showSettings = false
+  statsStore.showSettings = false
 }
 
 const togglePreview = () => {
-  gameStore.settings.showExpansionPreview = !gameStore.settings.showExpansionPreview
+  statsStore.settings.showExpansionPreview = !statsStore.settings.showExpansionPreview
 }
 
 const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
-  gameStore.settings.expansionPreviewStyle = style
+  statsStore.settings.expansionPreviewStyle = style
 }
 </script>
 
 <template>
   <Transition name="fade">
-    <div v-if="gameStore.showSettings" class="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-md pointer-events-auto">
+    <div v-if="statsStore.showSettings" class="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-md pointer-events-auto">
       <div 
         class="bg-gray-900 border-2 border-indigo-500/30 rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-[0_0_100px_rgba(99,102,241,0.2)] flex flex-col transform transition-all"
         @click.stop
@@ -45,17 +45,17 @@ const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
             <button 
               @click="togglePreview"
               class="relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none"
-              :class="gameStore.settings.showExpansionPreview ? 'bg-green-500' : 'bg-gray-600'"
+              :class="statsStore.settings.showExpansionPreview ? 'bg-green-500' : 'bg-gray-600'"
             >
               <span 
                 class="inline-block h-6 w-6 transform rounded-full bg-white transition-transform"
-                :class="gameStore.settings.showExpansionPreview ? 'translate-x-7' : 'translate-x-1'"
+                :class="statsStore.settings.showExpansionPreview ? 'translate-x-7' : 'translate-x-1'"
               ></span>
             </button>
           </div>
 
           <!-- Style Selection -->
-          <div v-if="gameStore.settings.showExpansionPreview" class="space-y-4">
+          <div v-if="statsStore.settings.showExpansionPreview" class="space-y-4">
             <h3 class="font-bold text-indigo-400 uppercase tracking-widest text-xs">Phác thảo kiểu hiển thị</h3>
             
             <div class="grid grid-cols-2 gap-4">
@@ -63,9 +63,9 @@ const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
               <button 
                 @click="setStyle('BLUEPRINT')"
                 class="relative group p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-3"
-                :class="gameStore.settings.expansionPreviewStyle === 'BLUEPRINT' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'"
+                :class="statsStore.settings.expansionPreviewStyle === 'BLUEPRINT' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'"
               >
-                <div v-if="gameStore.settings.expansionPreviewStyle === 'BLUEPRINT'" class="absolute -top-3 -right-3 bg-indigo-500 text-white p-1.5 rounded-full shadow-lg">
+                <div v-if="statsStore.settings.expansionPreviewStyle === 'BLUEPRINT'" class="absolute -top-3 -right-3 bg-indigo-500 text-white p-1.5 rounded-full shadow-lg">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                 </div>
                 <div class="w-full aspect-video rounded-xl bg-gray-900 border border-gray-700 flex items-center justify-center overflow-hidden">
@@ -81,9 +81,9 @@ const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
               <button 
                 @click="setStyle('GLOW')"
                 class="relative group p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-3"
-                :class="gameStore.settings.expansionPreviewStyle === 'GLOW' ? 'border-pink-500 bg-pink-500/10' : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'"
+                :class="statsStore.settings.expansionPreviewStyle === 'GLOW' ? 'border-pink-500 bg-pink-500/10' : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'"
               >
-                <div v-if="gameStore.settings.expansionPreviewStyle === 'GLOW'" class="absolute -top-3 -right-3 bg-pink-500 text-white p-1.5 rounded-full shadow-lg">
+                <div v-if="statsStore.settings.expansionPreviewStyle === 'GLOW'" class="absolute -top-3 -right-3 bg-pink-500 text-white p-1.5 rounded-full shadow-lg">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                 </div>
                 <div class="w-full aspect-video rounded-xl bg-gray-900 border border-gray-700 flex items-center justify-center overflow-hidden">

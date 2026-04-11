@@ -6,6 +6,7 @@ export const DEPTH = {
   OUTSIDE: 1,
   FLOOR: 2,
   WALL_GRAPHICS: 3,
+  WALL: 5,
   
   FURNITURE: 10,
   CASHIER: 10,
@@ -14,6 +15,8 @@ export const DEPTH = {
   PLAYER: 20,
   
   UI_TEXT: 21,
+  UI: 1000, // Top level UI elements
+  EDIT_OVERLAY: 900, // Overlay during edit mode
   
   GHOST: 100, // Ghost sprite during placement
   PLACEMENT_VISUALIZER: 150, // Red boxes

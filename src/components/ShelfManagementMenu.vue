@@ -1,24 +1,26 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useGameStore } from '../stores/gameStore'
+import { useShopStore } from '../stores/modules/shopStore'
+import { useInventoryStore } from '../stores/modules/inventoryStore'
 import { STOCK_ITEMS } from '../config/shopData'
 
-const gameStore = useGameStore()
+const shopStore = useShopStore()
+const inventoryStore = useInventoryStore()
 const selectedItemId = ref<string | null>(null)
 
 const inventoryItems = computed(() => {
-  return Object.keys(gameStore.shopInventory)
+  return Object.keys(inventoryStore.shopInventory)
     .map(itemId => ({
       id: itemId,
       item: STOCK_ITEMS[itemId],
-      quantity: gameStore.shopInventory[itemId]
+      quantity: inventoryStore.shopInventory[itemId]
     }))
     .filter(x => x.item !== undefined && x.quantity > 0)
 })
 
 const activeShelf = computed(() => {
-  if (!gameStore.activeShelfId) return null
-  return gameStore.placedShelves[gameStore.activeShelfId]
+  if (!shopStore.activeShelfId) return null
+  return shopStore.placedShelves[shopStore.activeShelfId]
 })
 
 const selectItem = (id: string) => { selectedItemId.value = id }
@@ -27,18 +29,18 @@ const selectItem = (id: string) => { selectedItemId.value = id }
 const handleTierClick = (tierIndex: number, event: MouseEvent) => {
   if (!selectedItemId.value) return
   if (event.shiftKey) {
-    gameStore.fillTier(selectedItemId.value, tierIndex)
+    shopStore.fillTier(selectedItemId.value, tierIndex)
   } else {
-    gameStore.moveToTierSlot(selectedItemId.value, tierIndex)
+    shopStore.moveToTierSlot(selectedItemId.value, tierIndex)
   }
-  if (!gameStore.shopInventory[selectedItemId.value]) {
+  if (!inventoryStore.shopInventory[selectedItemId.value]) {
     selectedItemId.value = null
   }
 }
 
 const clearTier = (tierIndex: number) => {
   if (!activeShelf.value) return
-  gameStore.clearTier(activeShelf.value.id, tierIndex)
+  shopStore.clearTier(activeShelf.value.id, tierIndex)
 }
 
 // Can we place selected item in this tier?
@@ -57,20 +59,10 @@ const tierFillPct = (tierIndex: number): number => {
   if (!tier.itemId || tier.maxSlots === 0) return 0
   return (tier.slots.length / tier.maxSlots) * 100
 }
-
-// Visual grid columns for rendering pack slots inside a tier
-// Packs: 4 cols × N rows (max 32 = 4×8). Boxes: 4 slots side by side.
-const tierColumns = (tierIndex: number): number => {
-  if (!activeShelf.value) return 4
-  const tier = activeShelf.value.tiers[tierIndex]
-  if (!tier.itemId) return 4
-  const itemData = STOCK_ITEMS[tier.itemId]
-  return itemData?.type === 'box' ? 4 : 4 // always 4 columns
-}
 </script>
 
 <template>
-  <div v-if="gameStore.showShelfMenu && activeShelf"
+  <div v-if="shopStore.showShelfMenu && activeShelf"
     class="absolute inset-0 z-[150] flex items-center justify-center bg-black/85 backdrop-blur-sm pointer-events-auto p-4">
     <div class="bg-gray-900 border-2 border-indigo-500/50 rounded-2xl w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl overflow-hidden">
 
@@ -80,10 +72,10 @@ const tierColumns = (tierIndex: number): number => {
           🗄️ KỆ HÀNG &nbsp;<span class="text-indigo-400 text-base font-medium">({{ activeShelf.id }})</span>
         </h2>
         <div class="flex items-center gap-3">
-          <button @click="gameStore.clearEntireShelf()" class="bg-red-900/60 hover:bg-red-700 text-red-200 text-xs font-bold px-4 py-2 uppercase tracking-wider rounded shadow transition-colors border border-red-700/50">
+          <button @click="shopStore.clearEntireShelf()" class="bg-red-900/60 hover:bg-red-700 text-red-200 text-xs font-bold px-4 py-2 uppercase tracking-wider rounded shadow transition-colors border border-red-700/50">
             Rút tất cả về Kho
           </button>
-          <button @click="gameStore.closeShelfManagement()" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-colors">
+          <button @click="shopStore.closeShelfManagement()" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -101,24 +93,24 @@ const tierColumns = (tierIndex: number): number => {
 
           <div v-else class="flex-grow overflow-y-auto pr-1 custom-scroll space-y-2">
             <div
-              v-for="inv in inventoryItems" :key="inv.id"
-              @click="selectItem(inv.id)"
-              class="flex justify-between items-center p-3 rounded-xl border-2 cursor-pointer transition-all"
-              :class="selectedItemId === inv.id
-                ? 'bg-indigo-900/50 border-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.4)]'
-                : 'bg-gray-800/60 border-gray-700/40 hover:bg-gray-700'"
-            >
-              <div class="flex flex-col min-w-0">
-                <span class="font-bold text-[13px] text-yellow-300 truncate flex items-center gap-1">
-                  {{ inv.item?.type === 'box' ? '📦' : '🎁' }} {{ inv.item?.name }}
-                </span>
-                <span class="text-[10px] text-gray-400 mt-0.5">
-                  SL/Tầng: {{ inv.item?.type === 'box' ? '4' : '32' }}
-                </span>
-              </div>
-              <div class="bg-gray-950 text-green-400 px-2 py-0.5 rounded text-sm font-mono border border-gray-700 ml-2 shrink-0">
-                x{{ inv.quantity }}
-              </div>
+                v-for="inv in inventoryItems" :key="inv.id"
+                @click="selectItem(inv.id)"
+                class="flex justify-between items-center p-3 rounded-xl border-2 cursor-pointer transition-all"
+                :class="selectedItemId === inv.id
+                  ? 'bg-indigo-900/50 border-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.4)]'
+                  : 'bg-gray-800/60 border-gray-700/40 hover:bg-gray-700'"
+              >
+                <div class="flex flex-col min-w-0">
+                  <span class="font-bold text-[13px] text-yellow-300 truncate flex items-center gap-1">
+                    {{ inv.item?.type === 'box' ? '📦' : '🎁' }} {{ inv.item?.name }}
+                  </span>
+                  <span class="text-[10px] text-gray-400 mt-0.5">
+                    SL/Tầng: {{ inv.item?.type === 'box' ? '4' : '32' }}
+                  </span>
+                </div>
+                <div class="bg-gray-950 text-green-400 px-2 py-0.5 rounded text-sm font-mono border border-gray-700 ml-2 shrink-0">
+                  x{{ inv.quantity }}
+                </div>
             </div>
           </div>
 
@@ -142,9 +134,9 @@ const tierColumns = (tierIndex: number): number => {
             :key="tierIdx"
             class="rounded-xl border-2 overflow-hidden shrink-0 transition-all"
             :class="{
-              'border-indigo-500/70 shadow-[0_0_20px_rgba(99,102,241,0.2)]': selectedItemId && canPlaceInTier(tierIdx),
-              'border-gray-700/50': !selectedItemId || !canPlaceInTier(tierIdx),
-              'border-red-900/50': selectedItemId && !canPlaceInTier(tierIdx) && tier.itemId !== null,
+                'border-indigo-500/70 shadow-[0_0_20px_rgba(99,102,241,0.2)]': selectedItemId && canPlaceInTier(tierIdx),
+                'border-gray-700/50': !selectedItemId || !canPlaceInTier(tierIdx),
+                'border-red-900/50': selectedItemId && !canPlaceInTier(tierIdx) && tier.itemId !== null,
             }"
           >
             <!-- Tier Header -->
@@ -189,40 +181,40 @@ const tierColumns = (tierIndex: number): number => {
                 — trống —
               </div>
 
-              <!-- Pack tier: compact vertical-stacking grid, 4 columns -->
+              <!-- Pack tier -->
               <div v-else-if="STOCK_ITEMS[tier.itemId]?.type === 'pack'"
                 class="grid gap-[3px]"
                 style="grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(8, auto);"
               >
                 <div
-                  v-for="n in tier.maxSlots"
-                  :key="n"
-                  class="rounded-sm border flex items-center justify-center transition-colors"
-                  :class="n <= tier.slots.length
-                    ? 'bg-gradient-to-b from-blue-500 to-indigo-700 border-indigo-400/60'
-                    : 'bg-gray-800/50 border-gray-700/30 border-dashed'"
-                  style="height: 22px;"
-                >
-                  <span v-if="n <= tier.slots.length" class="text-[10px] leading-none">🎁</span>
-                  <span v-else class="text-gray-700 text-[8px]">·</span>
+                    v-for="n in tier.maxSlots"
+                    :key="n"
+                    class="rounded-sm border flex items-center justify-center transition-colors"
+                    :class="n <= tier.slots.length
+                      ? 'bg-gradient-to-b from-blue-500 to-indigo-700 border-indigo-400/60'
+                      : 'bg-gray-800/50 border-gray-700/30 border-dashed'"
+                    style="height: 22px;"
+                  >
+                    <span v-if="n <= tier.slots.length" class="text-[10px] leading-none">🎁</span>
+                    <span v-else class="text-gray-700 text-[8px]">·</span>
                 </div>
               </div>
 
-              <!-- Box tier: 4 large slots -->
+              <!-- Box tier -->
               <div v-else-if="STOCK_ITEMS[tier.itemId]?.type === 'box'"
                 class="grid grid-cols-4 gap-3"
               >
                 <div
-                  v-for="n in tier.maxSlots"
-                  :key="n"
-                  class="rounded-lg border-2 flex flex-col items-center justify-center py-3 transition-colors"
-                  :class="n <= tier.slots.length
-                    ? 'bg-gradient-to-b from-orange-500/30 to-yellow-600/30 border-yellow-500/60 shadow-inner'
-                    : 'bg-gray-800/30 border-gray-700/30 border-dashed'"
-                  style="height: 80px;"
-                >
-                  <span v-if="n <= tier.slots.length" class="text-3xl">📦</span>
-                  <span v-else class="text-gray-700 text-xl">·</span>
+                    v-for="n in tier.maxSlots"
+                    :key="n"
+                    class="rounded-lg border-2 flex flex-col items-center justify-center py-3 transition-colors"
+                    :class="n <= tier.slots.length
+                      ? 'bg-gradient-to-b from-orange-500/30 to-yellow-600/30 border-yellow-500/60 shadow-inner'
+                      : 'bg-gray-800/30 border-gray-700/30 border-dashed'"
+                    style="height: 80px;"
+                  >
+                    <span v-if="n <= tier.slots.length" class="text-3xl">📦</span>
+                    <span v-else class="text-gray-700 text-xl">·</span>
                 </div>
               </div>
             </div>

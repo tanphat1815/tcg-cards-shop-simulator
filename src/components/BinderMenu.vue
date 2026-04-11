@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useGameStore } from '../stores/gameStore'
+import { useInventoryStore } from '../stores/modules/inventoryStore'
 
 const gameStore = useGameStore()
+const inventoryStore = useInventoryStore()
 
 const binderItems = computed(() => {
-  return Object.keys(gameStore.personalBinder).map(cardId => {
-    const cardData = gameStore.allCards.find(c => c.id === cardId)
+  return Object.keys(inventoryStore.personalBinder).map(cardId => {
+    const cardData = inventoryStore.allCards.find(c => c.id === cardId)
     return {
       id: cardId,
       card: cardData,
-      quantity: gameStore.personalBinder[cardId]
+      quantity: inventoryStore.personalBinder[cardId]
     }
   }).filter(item => item.card !== undefined)
 })
@@ -25,7 +27,7 @@ const binderItems = computed(() => {
         <span>📔</span> PERSONAL BINDER
       </h2>
       <button 
-        @click="gameStore.showBinderMenu = false"
+        @click="gameStore.setShowBinderMenu(false)"
         class="bg-gray-800 hover:bg-gray-700 text-white font-bold p-3 rounded-full border border-gray-600 shadow transition-transform hover:scale-110"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>

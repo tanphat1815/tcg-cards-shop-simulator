@@ -1,44 +1,52 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useGameStore } from '../stores/gameStore'
+import { useStatsStore } from '../stores/modules/statsStore'
+import { useInventoryStore } from '../stores/modules/inventoryStore'
+import { useShopStore } from '../stores/modules/shopStore'
+import { useStaffStore } from '../stores/modules/staffStore'
 import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
 
 const gameStore = useGameStore()
+const statsStore = useStatsStore()
+const inventoryStore = useInventoryStore()
+const shopStore = useShopStore()
+const staffStore = useStaffStore()
 const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF' | 'RENO'>('STOCK')
 import { WORKERS } from '../config/workerData'
 import { EXPANSIONS_LOT_A } from '../config/expansionData'
 
 const purchaseStock = (id: string, price: number) => {
-  if (gameStore.money < price) {
+  if (statsStore.money < price) {
     alert("Không đủ tiền mua hàng!")
     return
   }
-  const success = gameStore.buyStock(id, 1)
+  const success = inventoryStore.buyStock(id, 1)
   if (success) {
     // Play cha-ching sound or visual feedback (can be improved later)
   }
 }
 
 const purchaseFurniture = (id: string, price: number) => {
-  if (gameStore.money < price) {
+  if (statsStore.money < price) {
     alert("Không đủ tiền sắm nội thất!")
     return
   }
-  const success = gameStore.buyFurniture(id)
+  const success = shopStore.buyFurniture(id)
   if (success) {
     // Play cha-ching
   }
 }
 
 const hireWorker = (workerId: string) => {
-  const success = gameStore.hireWorker(workerId)
+  const success = staffStore.hireWorker(workerId)
   if (!success) {
     alert("Không đủ tiền hoặc Level chưa đạt yêu cầu!")
   }
 }
 
 const purchaseExpansion = () => {
-  const success = gameStore.buyExpansion()
+  const success = statsStore.buyExpansion()
   if (!success) {
     alert("Không đủ tiền hoặc Level chưa đạt yêu cầu mở rộng!")
   }
@@ -63,7 +71,7 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
             <span>🔒</span> https://tcg-distributor.market.com
           </div>
         </div>
-        <button @click="gameStore.showOnlineShop = false" class="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded transition shadow-sm">
+        <button @click="gameStore.setShowOnlineShop(false)" class="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded transition shadow-sm">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -75,7 +83,7 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
           <p class="text-indigo-200 text-sm font-medium">Đối tác cung ứng vật tư & mở rộng kinh doanh</p>
         </div>
         <div class="bg-indigo-800/50 p-2 py-1 rounded border border-indigo-500/50 text-xl font-mono text-yellow-300 font-bold shadow-inner">
-          Số dư: ${{ gameStore.money.toFixed(2) }}
+          Số dư: ${{ statsStore.money.toFixed(2) }}
         </div>
       </div>
 
@@ -122,23 +130,23 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
             class="bg-white rounded-xl overflow-hidden shadow-md border border-gray-200 relative group flex flex-col"
           >
             <!-- Lock Overlay if Level not met -->
-            <div v-if="gameStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
+            <div v-if="statsStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
               <span class="text-4xl mb-2">🔒</span>
               <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-sm shadow-xl border-2 border-red-800">
                 Unlock at Level {{ item.requiredLevel }}
               </div>
             </div>
 
-            <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': gameStore.level < item.requiredLevel }">
+            <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': statsStore.level < item.requiredLevel }">
                <div class="text-[80px] drop-shadow-xl transform group-hover:scale-110 transition-transform">
                  🎁
                </div>
             </div>
-            <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': gameStore.level < item.requiredLevel }">
+            <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': statsStore.level < item.requiredLevel }">
               <div class="flex justify-between items-start mb-2">
                 <h3 class="font-bold text-gray-900 text-lg leading-tight">{{ item.name }}</h3>
-                <span v-if="gameStore.shopInventory[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
-                  Có: {{ gameStore.shopInventory[item.id] }}
+                <span v-if="inventoryStore.shopInventory[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
+                  Có: {{ inventoryStore.shopInventory[item.id] }}
                 </span>
               </div>
               <p class="text-xs text-gray-500 mb-4 line-clamp-2 h-8">{{ item.description }}</p>
@@ -155,10 +163,10 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
               </div>
 
               <button 
-                :disabled="gameStore.level < item.requiredLevel"
+                :disabled="statsStore.level < item.requiredLevel"
                 @click="purchaseStock(item.id, item.buyPrice)"
                 class="w-full font-bold py-3 px-4 rounded-xl shadow uppercase tracking-wider transition-all active:scale-95"
-                :class="gameStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+                :class="statsStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
               >
                 Nhập Ngay (${{ item.buyPrice }})
               </button>
@@ -174,23 +182,23 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
             class="bg-white rounded-xl overflow-hidden shadow-md border border-gray-200 relative group flex flex-col"
           >
             <!-- Lock Overlay if Level not met -->
-            <div v-if="gameStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
+            <div v-if="statsStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
               <span class="text-4xl mb-2">🔒</span>
               <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-sm shadow-xl border-2 border-red-800">
                 Unlock at Level {{ item.requiredLevel }}
               </div>
             </div>
 
-            <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': gameStore.level < item.requiredLevel }">
+            <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': statsStore.level < item.requiredLevel }">
                <div class="text-[80px] drop-shadow-xl transform group-hover:scale-110 transition-transform">
                  🪑
                </div>
             </div>
-            <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': gameStore.level < item.requiredLevel }">
+            <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': statsStore.level < item.requiredLevel }">
               <div class="flex justify-between items-start mb-2">
                 <h3 class="font-bold text-gray-900 text-lg leading-tight">{{ item.name }}</h3>
-                <span v-if="gameStore.purchasedFurniture[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
-                  Kho: {{ gameStore.purchasedFurniture[item.id] }}
+                <span v-if="shopStore.purchasedFurniture[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
+                  Kho: {{ shopStore.purchasedFurniture[item.id] }}
                 </span>
               </div>
               <p class="text-xs text-gray-500 mb-4 line-clamp-2 h-8">{{ item.description }}</p>
@@ -203,10 +211,10 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
               </div>
 
               <button 
-                :disabled="gameStore.level < item.requiredLevel"
+                :disabled="statsStore.level < item.requiredLevel"
                 @click="purchaseFurniture(item.id, item.buyPrice)"
                 class="w-full font-bold py-3 px-4 rounded-xl shadow uppercase tracking-wider transition-all active:scale-95"
-                :class="gameStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+                :class="statsStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
               >
                 Mua Ngay (${{ item.buyPrice }})
               </button>
@@ -218,12 +226,12 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
         <div v-if="activeTab === 'STAFF'" class="flex flex-col gap-10">
           
           <!-- Hired Staff Management -->
-          <div v-if="gameStore.hiredWorkers.length > 0" class="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100">
+          <div v-if="staffStore.hiredWorkers.length > 0" class="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100">
             <h2 class="text-xl font-black text-indigo-900 mb-6 flex items-center gap-2">
-              📋 QUẢN LÝ NHÂN VIÊN HIỆN CÓ ({{ gameStore.hiredWorkers.length }})
+              📋 QUẢN LÝ NHÂN VIÊN HIỆN CÓ ({{ staffStore.hiredWorkers.length }})
             </h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div v-for="hw in gameStore.hiredWorkers" :key="hw.instanceId" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
+              <div v-for="hw in staffStore.hiredWorkers" :key="hw.instanceId" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
                 <div class="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center text-3xl shadow-inner">
                   👤
                 </div>
@@ -233,7 +241,7 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                     <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold uppercase">Nhiệm vụ:</span>
                     <select 
                       v-model="hw.duty" 
-                      @change="gameStore.changeWorkerDuty(hw.instanceId, hw.duty)"
+                      @change="staffStore.changeWorkerDuty(hw.instanceId, hw.duty)"
                       class="text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded px-1 py-0.5 focus:ring-0"
                     >
                       <option value="NONE">Đang nghỉ</option>
@@ -242,7 +250,7 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                     </select>
                   </div>
                 </div>
-                <button @click="gameStore.terminateWorker(hw.instanceId)" class="text-red-400 hover:text-red-700 p-2" title="Đuổi việc">
+                <button @click="staffStore.terminateWorker(hw.instanceId)" class="text-red-400 hover:text-red-700 p-2" title="Đuổi việc">
                    🗑️
                 </button>
               </div>
@@ -259,7 +267,7 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               <div v-for="w in WORKERS" :key="w.id" class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-200 relative group flex flex-col">
                 <!-- Level Lock -->
-                <div v-if="gameStore.level < w.levelUnlocked" class="absolute inset-0 bg-gray-900/40 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center">
+                <div v-if="statsStore.level < w.levelUnlocked" class="absolute inset-0 bg-gray-900/40 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center">
                   <span class="text-2xl mb-1">🔒</span>
                   <div class="bg-gray-800 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase">Level {{ w.levelUnlocked }} Required</div>
                 </div>
@@ -293,10 +301,10 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                   </div>
 
                   <button 
-                    :disabled="gameStore.level < w.levelUnlocked"
+                    :disabled="statsStore.level < w.levelUnlocked"
                     @click="hireWorker(w.id)"
                     class="w-full font-bold py-2.5 px-4 rounded-xl shadow-md uppercase tracking-wider transition-all active:scale-95"
-                    :class="gameStore.level >= w.levelUnlocked ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'"
+                    :class="statsStore.level >= w.levelUnlocked ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'"
                   >
                     Thuê Ngay
                   </button>
@@ -317,7 +325,7 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
             </div>
             <div class="text-right">
               <span class="block text-[10px] text-gray-500 font-bold uppercase">Expansion Status</span>
-              <span class="text-2xl font-black text-gray-800">LEVEL {{ gameStore.expansionLevel }}</span>
+              <span class="text-2xl font-black text-gray-800">LEVEL {{ statsStore.expansionLevel }}</span>
             </div>
           </div>
 
@@ -327,19 +335,19 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
               :key="exp.id"
               class="bg-white rounded-2xl overflow-hidden shadow-sm border-2 flex flex-col relative transition-all group"
               :class="[
-                gameStore.expansionLevel >= exp.id ? 'border-green-500/30 bg-green-50/10' : 'border-gray-100',
-                gameStore.expansionLevel + 1 === exp.id ? 'ring-2 ring-orange-500/20 scale-[1.02] shadow-xl z-10' : ''
+                statsStore.expansionLevel >= exp.id ? 'border-green-500/30 bg-green-50/10' : 'border-gray-100',
+                statsStore.expansionLevel + 1 === exp.id ? 'ring-2 ring-orange-500/20 scale-[1.02] shadow-xl z-10' : ''
               ]"
             >
               <!-- Purchased Overlay -->
-              <div v-if="gameStore.expansionLevel >= exp.id" class="absolute inset-0 bg-green-500/5 backdrop-blur-[1px] z-10 pointer-events-none flex items-center justify-center">
+              <div v-if="statsStore.expansionLevel >= exp.id" class="absolute inset-0 bg-green-500/5 backdrop-blur-[1px] z-10 pointer-events-none flex items-center justify-center">
                 <div class="bg-green-500 text-white p-2 rounded-full shadow-lg transform -rotate-12 border-2 border-white">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
                 </div>
               </div>
 
               <!-- Level Lock -->
-              <div v-if="gameStore.level < exp.requiredLevel && gameStore.expansionLevel < exp.id" class="absolute inset-0 bg-gray-900/40 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center">
+              <div v-if="statsStore.level < exp.requiredLevel && statsStore.expansionLevel < exp.id" class="absolute inset-0 bg-gray-900/40 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center">
                  <span class="text-3xl mb-1">🔒</span>
                  <p class="text-white font-black text-[10px] bg-red-600 px-3 py-1 rounded-full uppercase">Level {{ exp.requiredLevel }}</p>
               </div>
@@ -367,17 +375,17 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                 </div>
 
                 <button 
-                  v-if="gameStore.expansionLevel < exp.id"
+                  v-if="statsStore.expansionLevel < exp.id"
                   @click="purchaseExpansion"
-                  :disabled="gameStore.expansionLevel + 1 !== exp.id || gameStore.money < exp.cost || gameStore.level < exp.requiredLevel"
+                  :disabled="statsStore.expansionLevel + 1 !== exp.id || statsStore.money < exp.cost || statsStore.level < exp.requiredLevel"
                   class="w-full font-black py-3 rounded-xl transition-all shadow-md active:scale-95 text-xs tracking-widest uppercase"
                   :class="[
-                    gameStore.expansionLevel + 1 === exp.id && gameStore.money >= exp.cost && gameStore.level >= exp.requiredLevel
+                    statsStore.expansionLevel + 1 === exp.id && statsStore.money >= exp.cost && statsStore.level >= exp.requiredLevel
                       ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   ]"
                 >
-                  {{ gameStore.expansionLevel + 1 === exp.id ? 'Mở Rộng Ngay' : 'Đang Khóa' }}
+                  {{ statsStore.expansionLevel + 1 === exp.id ? 'Mở Rộng Ngay' : 'Đang Khóa' }}
                 </button>
                 <div v-else class="text-center font-black text-green-600 uppercase text-xs tracking-widest py-3">
                   Đã Hoàn Thành

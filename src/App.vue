@@ -17,24 +17,8 @@ const store = useGameStore()
 onMounted(() => {
   store.loadSave()
   
-  store.$subscribe((mutation, state) => {
-    localStorage.setItem('tcg-shop-save', JSON.stringify({
-      money: state.money,
-      shopInventory: state.shopInventory,
-      personalBinder: state.personalBinder,
-      purchasedFurniture: state.purchasedFurniture,
-      placedShelves: state.placedShelves,
-      currentDay: state.currentDay,
-      timeInMinutes: state.timeInMinutes,
-      shopState: state.shopState,
-      level: state.level,
-      currentExp: state.currentExp,
-      settings: state.settings,
-      expansionLevel: state.expansionLevel,
-      placedTables: state.placedTables,
-      hiredWorkers: state.hiredWorkers,
-      placedCashiers: state.placedCashiers
-    }))
+  store.$subscribe(() => {
+    store.saveGame()
   }, { deep: true })
 })
 </script>

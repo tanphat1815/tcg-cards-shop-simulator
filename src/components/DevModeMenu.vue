@@ -1,25 +1,25 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useGameStore } from '../stores/gameStore'
+import { useStatsStore } from '../stores/modules/statsStore'
 
-const gameStore = useGameStore()
+const statsStore = useStatsStore()
 const isOpen = ref(false)
 
-const toggelDevMode = () => {
+const toggleDevMode = () => {
   isOpen.value = !isOpen.value
 }
 
 const addMoney = (amount: number) => {
-  gameStore.addMoney(amount)
+  statsStore.addMoney(amount)
 }
 
 const addLevel = (levels: number) => {
-  gameStore.level += levels
-  gameStore.showLevelUpNext = true
+  statsStore.level += levels
+  statsStore.showLevelUpNext = true
 }
 
 const nextDay = () => {
-  gameStore.startNewDay()
+  statsStore.startNewDay(0)
 }
 </script>
 
@@ -27,7 +27,7 @@ const nextDay = () => {
   <div class="fixed bottom-4 left-4 z-[9999] font-sans">
     <!-- Nút bật tắt Dev Mode -->
     <button 
-      @click="toggelDevMode"
+      @click="toggleDevMode"
       class="bg-black/50 hover:bg-black/80 text-white p-3 rounded-full backdrop-blur-md shadow-lg border border-gray-600 transition-all hover:scale-110 flex items-center justify-center opacity-30 hover:opacity-100"
       title="Developer Mode"
     >

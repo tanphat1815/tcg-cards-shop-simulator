@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
-import { useGameStore } from '../stores/gameStore'
+import { useInventoryStore } from '../stores/modules/inventoryStore'
 
-const gameStore = useGameStore()
+const inventoryStore = useInventoryStore()
 const flipped = ref<boolean[]>([])
 const particleCanvas = ref<HTMLCanvasElement | null>(null)
 
@@ -124,9 +124,9 @@ const updateParticles = () => {
 }
 
 // --- Logic ---
-watch(() => gameStore.isOpeningPack, (newVal) => {
+watch(() => inventoryStore.isOpeningPack, (newVal) => {
   if (newVal) {
-    flipped.value = new Array(gameStore.currentPack.length).fill(false)
+    flipped.value = new Array(inventoryStore.currentPack.length).fill(false)
     
     // Attempt play tear sound
     playTearSound()
@@ -155,7 +155,7 @@ const flipCard = (index: number, event: MouseEvent) => {
   flipped.value[index] = true
   playFlipSound()
   
-  const card = gameStore.currentPack[index]
+  const card = inventoryStore.currentPack[index]
   if (card.rarity === 'Rare') {
     playRareSound()
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
@@ -172,7 +172,7 @@ const allFlipped = () => {
 </script>
 
 <template>
-  <div v-if="gameStore.isOpeningPack" class="absolute top-0 left-0 w-full h-full z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center pointer-events-auto">
+  <div v-if="inventoryStore.isOpeningPack" class="absolute top-0 left-0 w-full h-full z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center pointer-events-auto">
     <!-- Particle Canvas Layer -->
     <canvas ref="particleCanvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
 
@@ -182,7 +182,7 @@ const allFlipped = () => {
 
     <div class="flex gap-4 justify-center flex-wrap max-w-5xl mx-auto px-4">
       <div 
-        v-for="(card, index) in gameStore.currentPack" 
+        v-for="(card, index) in inventoryStore.currentPack" 
         :key="index"
         class="w-48 h-64 perspective-1000 cursor-pointer group z-10"
         @click="flipCard(index, $event)"
@@ -246,7 +246,7 @@ const allFlipped = () => {
 
     <button 
       v-if="allFlipped()"
-      @click="gameStore.closePackOpening()"
+      @click="inventoryStore.closePackOpening()"
       class="mt-16 px-12 py-5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-black text-2xl rounded-full shadow-[0_0_30px_rgba(34,197,94,0.5)] transition-all hover:scale-110 active:scale-95 uppercase tracking-widest border-2 border-green-300/50"
     >
       Thu thập bài
