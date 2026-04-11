@@ -28,6 +28,7 @@ export default class MainScene extends Phaser.Scene {
   private shelvesGroup!: Phaser.Physics.Arcade.StaticGroup
   private tablesGroup!: Phaser.Physics.Arcade.StaticGroup
   private cashierGroup!: Phaser.Physics.Arcade.StaticGroup
+  private wallsGroup!: Phaser.Physics.Arcade.StaticGroup
   private cashierDesk!: Phaser.Physics.Arcade.Sprite
   private keyE!: Phaser.Input.Keyboard.Key
   private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
@@ -89,10 +90,14 @@ export default class MainScene extends Phaser.Scene {
     this.shelvesGroup = this.physics.add.staticGroup()
     this.tablesGroup = this.physics.add.staticGroup()
     this.cashierGroup = this.physics.add.staticGroup()
+    this.wallsGroup = this.physics.add.staticGroup()
 
-    // Tạo Quầy thu ngân (Cashier) - Vị trí sẽ được cập nhật trong refreshEnvironment
-    this.cashierDesk = this.cashierGroup.create(600, 150, 'cashier') as Phaser.Physics.Arcade.Sprite
+    // Tạo Quầy thu ngân (Cashier) - Vị trí tuyệt đối lấy từ Store
+    this.cashierDesk = this.cashierGroup.create(gameStore.cashierPosition.x, gameStore.cashierPosition.y, 'cashier') as Phaser.Physics.Arcade.Sprite
     this.cashierDesk.setData('id', 'cashier')
+
+    // Thiết lập giới hạn thế giới rộng lớn (3000x3000px)
+    this.physics.world.setBounds(0, 0, 3000, 3000)
 
     // Khởi tạo môi trường shop & bounds
     this.refreshEnvironment()
@@ -113,6 +118,7 @@ export default class MainScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.shelvesGroup)
     this.physics.add.collider(this.player, this.tablesGroup)
     this.physics.add.collider(this.player, this.cashierGroup)
+    this.physics.add.collider(this.player, this.wallsGroup)
 
     // Cấu hình phím
     if (this.input.keyboard) {
@@ -170,10 +176,9 @@ export default class MainScene extends Phaser.Scene {
     this.shopBounds = { x: startX, y: startY, w: shopW, h: shopH }
     this.doorLocation = { x: startX + shopW / 2, y: startY + shopH }
 
-    // World & Camera Bounds
+    // Camera Bounds (Bám theo không gian thế giới rộng đã thiết lập ở create)
     const worldPad = 400
-    this.physics.world.setBounds(startX, startY, shopW, shopH)
-    this.cameras.main.setBounds(startX - worldPad, startY - worldPad, shopW + worldPad * 2, shopH + worldPad * 2)
+    this.cameras.main.setBounds(0, 0, 3000, 3000)
 
     // Vẽ Outside
     this.outsideGraphics.clear()
@@ -204,9 +209,8 @@ export default class MainScene extends Phaser.Scene {
     const doorWidth = 80
     this.wallGraphics.lineBetween(this.doorLocation.x - doorWidth/2, this.doorLocation.y, this.doorLocation.x + doorWidth/2, this.doorLocation.y)
     
-    if (this.cashierDesk) {
-      this.cashierDesk.setPosition(startX + shopW - 60, startY + 60)
-    }
+    // ĐÃ XÓA: this.cashierDesk.setPosition(...) 
+    // Giữ nguyên vị trí tuyệt đối từ create
 
     // DRAW PREVIEW
     this.previewGraphics.clear()
@@ -256,6 +260,43 @@ export default class MainScene extends Phaser.Scene {
     drawDashedLine(x + w, y, x + w, y + h)
     drawDashedLine(x + w, y + h, x, y + h)
     drawDashedLine(x, y + h, x, y)
+    
+    this.updatePhysicalWalls()
+  }
+
+  private updatePhysicalWalls() {
+    this.wallsGroup.clear(true, true);
+    const { x, y, w, h } = this.shopBounds;
+    const thickness = 40; // Đủ dày để không bị lọt qua khi lag
+
+    // Top wall
+    const top = this.add.rectangle(x + w / 2, y - thickness / 2, w, thickness, 0x000000, 0)
+    this.wallsGroup.add(top)
+    
+    // Left wall
+    const left = this.add.rectangle(x - thickness / 2, y + h / 2, thickness, h, 0x000000, 0)
+    this.wallsGroup.add(left)
+    
+    // Right wall
+    const right = this.add.rectangle(x + w + thickness / 2, y + h / 2, thickness, h, 0x000000, 0)
+    this.wallsGroup.add(right)
+
+    // Bottom wall (với khe cửa)
+    const doorWidth = 80
+    const sideWallWidth = (w - doorWidth) / 2
+    
+    // Bottom Left
+    const bLeft = this.add.rectangle(x + sideWallWidth / 2, y + h + thickness / 2, sideWallWidth, thickness, 0x000000, 0)
+    this.wallsGroup.add(bLeft)
+    
+    // Bottom Right
+    const bRight = this.add.rectangle(x + w - sideWallWidth / 2, y + h + thickness / 2, sideWallWidth, thickness, 0x000000, 0)
+    this.wallsGroup.add(bRight)
+    
+    // NPC cũng cần va chạm với tường
+    this.customers.forEach(cust => {
+      this.physics.add.collider(cust.sprite, this.wallsGroup)
+    })
   }
 
   spawnCustomer() {
@@ -268,19 +309,28 @@ export default class MainScene extends Phaser.Scene {
 
     const isPlayer = Math.random() < 0.3
 
-    this.customers.push({
+    const newCust: Customer = {
       sprite: npcSprite,
-      state: 'SPAWN',
+      state: 'SPAWN' as NPCState,
       timer: this.time.now + 500,
       targetX: this.doorLocation.x,
       targetY: this.doorLocation.y - 40, // Đi vào trong shop
       targetPrice: 0,
-      intent: isPlayer ? 'PLAY' : 'BUY'
-    })
+      intent: isPlayer ? 'PLAY' : ('BUY' as any) // Cast appropriately
+    }
+    // Correcting intent as well
+    newCust.intent = isPlayer ? 'PLAY' : 'BUY'
+    this.customers.push(newCust)
+
+    // Thêm va chạm
+    this.physics.add.collider(npcSprite, this.shelvesGroup)
+    this.physics.add.collider(npcSprite, this.tablesGroup)
+    this.physics.add.collider(npcSprite, this.wallsGroup)
+
     this.physics.moveTo(npcSprite, this.doorLocation.x, this.doorLocation.y - 40, 100)
   }
 
-  update(time: number, delta: number) {
+  update(time: number, _delta: number) {
     if (!this.cursors || !this.player.body || !this.keyE) return
 
     const store = useGameStore()

@@ -109,6 +109,7 @@ export const useGameStore = defineStore('game', {
     timeInMinutes: 480, // 8:00 AM
     showEndDayModal: false,
     expansionLevel: 0,
+    cashierPosition: { x: 200, y: 200 }, // Start at 200, 200 relative to world (0,0)
   }),
   getters: {
     requiredExp: (state) => getRequiredExp(state.level),
@@ -138,6 +139,9 @@ export const useGameStore = defineStore('game', {
           }
           if (parsed.settings) {
             this.settings = { ...this.settings, ...parsed.settings }
+          }
+          if (parsed.cashierPosition) {
+            this.cashierPosition = parsed.cashierPosition
           }
           this.currentDay = parsed.currentDay ?? 1
           this.timeInMinutes = parsed.timeInMinutes ?? 480

@@ -31,7 +31,8 @@ onMounted(() => {
       currentExp: state.currentExp,
       settings: state.settings,
       placedTables: state.placedTables,
-      hiredWorkers: state.hiredWorkers
+      hiredWorkers: state.hiredWorkers,
+      cashierPosition: state.cashierPosition
     }))
   }, { deep: true })
 })
