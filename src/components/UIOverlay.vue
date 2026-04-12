@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch, ref } from 'vue'
 import { useGameStore } from '../stores/gameStore'
+import EnhancedButton from './shared/EnhancedButton.vue'
 
 /**
  * Facade store for managing game state
@@ -83,24 +84,26 @@ const isInventoryMinimized = ref(false)
       </div>
       
       <!-- Shop Toggle Button -->
-      <button 
+      <EnhancedButton
+        :variant="gameStore.shopState === 'OPEN' ? 'danger' : 'success'"
+        size="md"
+        fullWidth
+        :icon="{ name: gameStore.shopState === 'OPEN' ? 'close' : 'arrow-right', position: 'left' }"
         @click="gameStore.setShopState(gameStore.shopState === 'OPEN' ? 'CLOSED' : 'OPEN')"
-        class="mt-3 w-full text-white text-[11px] font-black py-2.5 px-6 rounded-xl transition-all hover:scale-105 active:scale-95 uppercase tracking-wider pointer-events-auto border shadow-lg"
-        :class="gameStore.shopState === 'OPEN' 
-          ? 'bg-gradient-to-r from-red-600 to-red-800 border-red-400/30 shadow-red-500/20' 
-          : 'bg-gradient-to-r from-green-600 to-emerald-700 border-green-400/30 shadow-green-500/20 animate-pulse'"
       >
         {{ gameStore.shopState === 'OPEN' ? '🛑 Đóng Cửa' : '🚀 Mở Cửa Hàng' }}
-      </button>
+      </EnhancedButton>
 
       <!-- Manual End Day Button (Summary) -->
-      <button 
-        v-if="gameStore.shopState === 'CLOSED' && gameStore.timeInMinutes > 600" 
+      <EnhancedButton
+        v-if="gameStore.shopState === 'CLOSED' && gameStore.timeInMinutes > 600"
+        variant="warning"
+        size="sm"
+        fullWidth
         @click="gameStore.forceEndDay()"
-        class="mt-2 w-full bg-gray-800/80 hover:bg-gray-700 text-orange-400 text-[9px] font-black py-1.5 px-4 rounded-lg border border-orange-500/20 transition-all pointer-events-auto uppercase tracking-tighter"
       >
         📊 Tổng Kết Ngày (Sớm)
-      </button>
+      </EnhancedButton>
     </div>
 
     <!-- Top-left: Balance & Stats -->
@@ -143,19 +146,42 @@ const isInventoryMinimized = ref(false)
             <span class="font-bold text-xs uppercase tracking-wider flex items-center gap-2">
               <span class="animate-bounce">⏱</span> Khách chờ: {{ gameStore.waitingCustomers }}
             </span>
-            <button @click="gameStore.serveCustomer()" class="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-400 hover:to-red-400 text-white font-black px-3 py-1.5 rounded-lg shadow-lg text-[10px] uppercase transition-all transform hover:scale-105 active:scale-95">Thanh toán</button>
+            <EnhancedButton
+              variant="warning"
+              size="sm"
+              @click="gameStore.serveCustomer()"
+            >
+              Thanh toán
+            </EnhancedButton>
           </div>
 
           <div class="mt-5 pt-5 border-t border-gray-700/50 flex gap-3">
-            <button @click="gameStore.setShowOnlineShop(true)" class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 font-black italic pointer-events-auto">
+            <EnhancedButton
+              variant="primary"
+              size="md"
+              :icon="{ name: 'cart', position: 'left' }"
+              @click="gameStore.setShowOnlineShop(true)"
+            >
               🛒 SHOP
-            </button>
-            <button @click="gameStore.setShowBuildMenu(true)" class="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/10 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 pointer-events-auto" title="Mở menu xây dựng">
+            </EnhancedButton>
+            <EnhancedButton
+              variant="success"
+              size="md"
+              :icon="{ name: 'edit', position: 'left' }"
+              @click="gameStore.setShowBuildMenu(true)"
+              title="Mở menu xây dựng"
+            >
               🏗️
-            </button>
-            <button @click="gameStore.setShowSettings(true)" class="bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700/50 font-bold py-3 px-4 rounded-xl transition-all shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-2 pointer-events-auto" title="Cài đặt">
+            </EnhancedButton>
+            <EnhancedButton
+              variant="secondary"
+              size="md"
+              :icon="{ name: 'settings', position: 'left' }"
+              @click="gameStore.setShowSettings(true)"
+              title="Cài đặt"
+            >
               ⚙️
-            </button>
+            </EnhancedButton>
           </div>
         </div>
         <div v-else key="minimized" class="pointer-events-auto flex items-center gap-2">
@@ -173,7 +199,7 @@ const isInventoryMinimized = ref(false)
     </div>
 
     <!-- Bottom-right: Inventory -->
-    <div class="absolute bottom-6 right-6 flex flex-col items-end gap-3 max-w-sm w-full">
+    <div class="absolute bottom-6 right-6 flex flex-col items-end gap-3 max-w-sm w-full pointer-events-auto">
       <Transition name="panel-slide" mode="out-in">
         <div 
           v-if="!isInventoryMinimized" 
@@ -189,9 +215,14 @@ const isInventoryMinimized = ref(false)
             <h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 flex items-center gap-2">
               📦 Kho Hàng <span class="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-md">{{ inventoryDetails.length }} items</span>
             </h3>
-            <button @click="gameStore.setShowBinderMenu(true)" class="text-[10px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5">
-               <span>📔</span> Binder Menu
-            </button>
+            <EnhancedButton
+              variant="outline"
+              size="sm"
+              :icon="{ name: 'star', position: 'left' }"
+              @click="gameStore.setShowBinderMenu(true)"
+            >
+              Binder Menu
+            </EnhancedButton>
           </div>
           
           <div class="overflow-y-auto space-y-2.5 pr-2 custom-scrollbar">
@@ -212,7 +243,7 @@ const isInventoryMinimized = ref(false)
             </div>
           </div>
         </div>
-        <button v-else @click="isInventoryMinimized = false" class="bg-gray-900/90 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl border border-gray-700 font-black uppercase tracking-[0.2em] text-[10px] flex items-center gap-4 animate-in fade-in slide-in-from-right-2 hover:scale-105 transition-transform group">
+        <button v-else @click="isInventoryMinimized = false" class="bg-gray-900/90 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl border border-gray-700 font-black uppercase tracking-[0.2em] text-[10px] flex items-center gap-4 animate-in fade-in slide-in-from-right-2 hover:scale-105 transition-transform group pointer-events-auto">
           <span class="text-xl group-hover:rotate-12 transition-transform">📦</span> Inventory
           <span v-if="inventoryDetails.length > 0" class="bg-indigo-600 text-white px-2 py-0.5 rounded-lg text-[9px]">{{ inventoryDetails.length }}</span>
         </button>

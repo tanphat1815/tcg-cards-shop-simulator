@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { useStatsStore } from '../stores/modules/statsStore'
+import { useButton, useIconButton } from '../composables/useButton'
 
 const statsStore = useStatsStore()
+
+// Button composables
+const closeBtn = useIconButton('close', 'sm')
+const blueprintBtn = useButton('outline', 'md')
+const glowBtn = useButton('outline', 'md')
 
 const close = () => {
   statsStore.showSettings = false
@@ -9,6 +15,20 @@ const close = () => {
 
 const togglePreview = () => {
   statsStore.settings.showExpansionPreview = !statsStore.settings.showExpansionPreview
+}
+
+const getBlueprintClasses = () => {
+  const baseClasses = blueprintBtn.classes.value
+  return statsStore.settings.expansionPreviewStyle === 'BLUEPRINT' 
+    ? baseClasses + ' border-indigo-500 bg-indigo-500/10' 
+    : baseClasses + ' border-gray-700 bg-gray-800/30 hover:border-gray-600'
+}
+
+const getGlowClasses = () => {
+  const baseClasses = glowBtn.classes.value
+  return statsStore.settings.expansionPreviewStyle === 'GLOW' 
+    ? baseClasses + ' border-pink-500 bg-pink-500/10' 
+    : baseClasses + ' border-gray-700 bg-gray-800/30 hover:border-gray-600'
 }
 
 const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
@@ -28,8 +48,8 @@ const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
           <h2 class="text-2xl font-black text-white flex items-center gap-3">
             <span class="text-3xl">⚙️</span> CÀI ĐẶT GAME
           </h2>
-          <button @click="close" class="text-gray-400 hover:text-white bg-gray-800 hover:bg-red-500 p-2.5 rounded-full transition-all">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          <button @click="close" :class="closeBtn.classes" :title="closeBtn.title">
+            <span v-html="closeBtn.icon"></span>
           </button>
         </div>
 
@@ -62,8 +82,8 @@ const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
               <!-- Blueprint Style -->
               <button 
                 @click="setStyle('BLUEPRINT')"
-                class="relative group p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-3"
-                :class="statsStore.settings.expansionPreviewStyle === 'BLUEPRINT' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'"
+                :class="getBlueprintClasses()"
+                class="relative group p-4 rounded-3xl transition-all flex flex-col items-center gap-3"
               >
                 <div v-if="statsStore.settings.expansionPreviewStyle === 'BLUEPRINT'" class="absolute -top-3 -right-3 bg-indigo-500 text-white p-1.5 rounded-full shadow-lg">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
@@ -80,8 +100,8 @@ const setStyle = (style: 'BLUEPRINT' | 'GLOW') => {
               <!-- Glow Style -->
               <button 
                 @click="setStyle('GLOW')"
-                class="relative group p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-3"
-                :class="statsStore.settings.expansionPreviewStyle === 'GLOW' ? 'border-pink-500 bg-pink-500/10' : 'border-gray-700 bg-gray-800/30 hover:border-gray-600'"
+                :class="getGlowClasses()"
+                class="relative group p-4 rounded-3xl transition-all flex flex-col items-center gap-3"
               >
                 <div v-if="statsStore.settings.expansionPreviewStyle === 'GLOW'" class="absolute -top-3 -right-3 bg-pink-500 text-white p-1.5 rounded-full shadow-lg">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>

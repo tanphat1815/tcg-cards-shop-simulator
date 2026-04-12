@@ -5,6 +5,7 @@ import { useStatsStore } from '../stores/modules/statsStore'
 import { useInventoryStore } from '../stores/modules/inventoryStore'
 import { useShopStore } from '../stores/modules/shopStore'
 import { useStaffStore } from '../stores/modules/staffStore'
+import { useButton, useIconButton } from '../composables/useButton'
 import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
 
 const gameStore = useGameStore()
@@ -13,6 +14,13 @@ const inventoryStore = useInventoryStore()
 const shopStore = useShopStore()
 const staffStore = useStaffStore()
 const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF' | 'RENO' | 'SETTINGS'>('STOCK')
+
+// Button composables for purchase actions
+const purchaseStockBtn = useButton('primary', 'md', false, false, true)
+const purchaseFurnitureBtn = useButton('primary', 'md', false, false, true)
+const hireWorkerBtn = useButton('primary', 'md', false, false, true)
+const purchaseExpansionBtn = useButton('warning', 'md', false, false, true)
+const terminateWorkerBtn = useIconButton('danger', 'sm')
 import { WORKERS } from '../config/workerData'
 import { EXPANSIONS_LOT_A } from '../config/expansionData'
 
@@ -172,8 +180,8 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
               <button 
                 :disabled="statsStore.level < item.requiredLevel"
                 @click="purchaseStock(item.id, item.buyPrice)"
-                class="w-full font-bold py-3 px-4 rounded-xl shadow uppercase tracking-wider transition-all active:scale-95"
-                :class="statsStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+                :class="purchaseStockBtn.classes"
+                class="uppercase tracking-wider"
               >
                 Nhập Ngay (${{ item.buyPrice }})
               </button>
@@ -220,8 +228,8 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
               <button 
                 :disabled="statsStore.level < item.requiredLevel"
                 @click="purchaseFurniture(item.id, item.buyPrice)"
-                class="w-full font-bold py-3 px-4 rounded-xl shadow uppercase tracking-wider transition-all active:scale-95"
-                :class="statsStore.level >= item.requiredLevel ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-500/30' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+                :class="purchaseFurnitureBtn.classes"
+                class="uppercase tracking-wider"
               >
                 Mua Ngay (${{ item.buyPrice }})
               </button>
@@ -274,7 +282,7 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                     </div>
                   </div>
                 </div>
-                <button @click="staffStore.terminateWorker(hw.instanceId)" class="text-red-400 hover:text-red-700 p-2" title="Đuổi việc">
+                <button @click="staffStore.terminateWorker(hw.instanceId)" :class="terminateWorkerBtn.classes" title="Đuổi việc">
                    🗑️
                 </button>
               </div>
@@ -327,12 +335,8 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                   <button 
                     :disabled="statsStore.level < w.levelUnlocked || staffStore.hiredWorkers.some(hw => hw.workerId === w.id)"
                     @click="hireWorker(w.id)"
-                    class="w-full font-bold py-2.5 px-4 rounded-xl shadow-md uppercase tracking-wider transition-all active:scale-95"
-                    :class="[
-                      statsStore.level < w.levelUnlocked || staffStore.hiredWorkers.some(hw => hw.workerId === w.id)
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                    ]"
+                    :class="hireWorkerBtn.classes"
+                    class="uppercase tracking-wider"
                   >
                     {{ staffStore.hiredWorkers.some(hw => hw.workerId === w.id) ? 'Đang Thuê' : 'Thuê Ngay' }}
                   </button>
@@ -406,12 +410,8 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                   v-if="statsStore.expansionLevel < exp.id"
                   @click="purchaseExpansion"
                   :disabled="statsStore.expansionLevel + 1 !== exp.id || statsStore.money < exp.cost || statsStore.level < exp.requiredLevel"
-                  class="w-full font-black py-3 rounded-xl transition-all shadow-md active:scale-95 text-xs tracking-widest uppercase"
-                  :class="[
-                    statsStore.expansionLevel + 1 === exp.id && statsStore.money >= exp.cost && statsStore.level >= exp.requiredLevel
-                      ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  ]"
+                  :class="purchaseExpansionBtn.classes"
+                  class="text-xs tracking-widest uppercase"
                 >
                   {{ statsStore.expansionLevel + 1 === exp.id ? 'Mở Rộng Ngay' : 'Đang Khóa' }}
                 </button>

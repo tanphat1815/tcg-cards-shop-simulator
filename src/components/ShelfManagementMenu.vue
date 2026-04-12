@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useShopStore } from '../stores/modules/shopStore'
 import { useInventoryStore } from '../stores/modules/inventoryStore'
 import { STOCK_ITEMS } from '../config/shopData'
+import EnhancedButton from './shared/EnhancedButton.vue'
 
 const shopStore = useShopStore()
 const inventoryStore = useInventoryStore()
@@ -72,12 +73,20 @@ const tierFillPct = (tierIndex: number): number => {
           🗄️ KỆ HÀNG &nbsp;<span class="text-indigo-400 text-base font-medium">({{ activeShelf.id }})</span>
         </h2>
         <div class="flex items-center gap-3">
-          <button @click="shopStore.clearEntireShelf()" class="bg-red-900/60 hover:bg-red-700 text-red-200 text-xs font-bold px-4 py-2 uppercase tracking-wider rounded shadow transition-colors border border-red-700/50">
+          <EnhancedButton
+            variant="danger"
+            size="sm"
+            @click="shopStore.clearEntireShelf()"
+          >
             Rút tất cả về Kho
-          </button>
-          <button @click="shopStore.closeShelfManagement()" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+          </EnhancedButton>
+          <EnhancedButton
+            variant="icon"
+            size="sm"
+            :icon="{ name: 'close' }"
+            defaultText=""
+            @click="shopStore.closeShelfManagement()"
+          />
         </div>
       </div>
 
@@ -164,13 +173,14 @@ const tierFillPct = (tierIndex: number): number => {
                 <span v-if="selectedItemId && canPlaceInTier(tierIdx)" class="text-[10px] text-indigo-300 font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
                   Click để đặt · Shift để điền đầy
                 </span>
-                <button
+                <EnhancedButton
                   v-if="tier.itemId"
+                  variant="danger"
+                  size="xs"
                   @click.stop="clearTier(tierIdx)"
-                  class="bg-red-800/50 hover:bg-red-600 text-red-300 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider transition-colors border border-red-700/50"
                 >
                   Rút hết
-                </button>
+                </EnhancedButton>
               </div>
             </div>
 

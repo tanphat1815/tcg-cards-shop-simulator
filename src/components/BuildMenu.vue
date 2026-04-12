@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useShopStore } from '../stores/modules/shopStore'
 import { FURNITURE_ITEMS } from '../config/shopData'
+import EnhancedButton from './shared/EnhancedButton.vue'
 
 const shopStore = useShopStore()
 
@@ -28,9 +29,13 @@ const startBuild = (id: string) => {
           <h2 class="text-2xl font-black text-white flex items-center gap-3">
             <span class="text-3xl">🏗️</span> SHOP SETUP
           </h2>
-          <button @click="shopStore.showBuildMenu = false" class="text-gray-400 hover:text-white bg-gray-700 hover:bg-red-500 p-2 rounded-full transition-all">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+          <EnhancedButton
+            variant="icon"
+            size="sm"
+            :icon="{ name: 'close' }"
+            defaultText=""
+            @click="shopStore.showBuildMenu = false"
+          />
         </div>
 
         <div class="p-8 overflow-y-auto">
@@ -42,17 +47,14 @@ const startBuild = (id: string) => {
               </h3>
               <p class="text-xs text-gray-400 mt-1">Khi bật, bạn có thể click vào nội thất đã đặt để di chuyển hoặc cất đi.</p>
             </div>
-            <button 
+            <EnhancedButton
+              :variant="shopStore.isEditMode ? 'success' : 'secondary'"
+              size="md"
+              :icon="{ name: shopStore.isEditMode ? 'check' : 'edit', position: 'left' }"
               @click="shopStore.toggleEditMode()"
-              :class="[
-                'px-6 py-2 rounded-full font-black text-sm transition-all transform active:scale-95 shadow-lg',
-                shopStore.isEditMode 
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40 ring-4 ring-blue-500/20' 
-                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-              ]"
             >
               {{ shopStore.isEditMode ? 'ON' : 'OFF' }}
-            </button>
+            </EnhancedButton>
           </div>
 
           <p class="text-gray-400 mb-6 font-medium italic border-l-4 border-green-500 pl-4">Chọn nội thất trong kho để đặt mới:</p>

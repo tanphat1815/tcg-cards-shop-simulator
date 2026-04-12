@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
 import { useInventoryStore } from '../stores/modules/inventoryStore'
+import EnhancedButton from './shared/EnhancedButton.vue'
 
 const inventoryStore = useInventoryStore()
 const flipped = ref<boolean[]>([])
@@ -244,13 +245,15 @@ const allFlipped = () => {
       </div>
     </div>
 
-    <button 
+    <EnhancedButton
       v-if="allFlipped()"
+      variant="success"
+      size="xl"
+      fullWidth
       @click="inventoryStore.closePackOpening()"
-      class="mt-16 px-12 py-5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-black text-2xl rounded-full shadow-[0_0_30px_rgba(34,197,94,0.5)] transition-all hover:scale-110 active:scale-95 uppercase tracking-widest border-2 border-green-300/50"
     >
       Thu thập bài
-    </button>
+    </EnhancedButton>
   </div>
 </template>
 

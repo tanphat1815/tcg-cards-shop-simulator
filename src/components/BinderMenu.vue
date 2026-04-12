@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useGameStore } from '../stores/gameStore'
 import { useInventoryStore } from '../stores/modules/inventoryStore'
+import EnhancedButton from './shared/EnhancedButton.vue'
 
 const gameStore = useGameStore()
 const inventoryStore = useInventoryStore()
@@ -26,12 +27,13 @@ const binderItems = computed(() => {
       <h2 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500 tracking-widest drop-shadow-sm flex items-center gap-4">
         <span>📔</span> PERSONAL BINDER
       </h2>
-      <button 
+      <EnhancedButton
+        variant="icon"
+        size="sm"
+        :icon="{ name: 'close' }"
+        defaultText=""
         @click="gameStore.setShowBinderMenu(false)"
-        class="bg-gray-800 hover:bg-gray-700 text-white font-bold p-3 rounded-full border border-gray-600 shadow transition-transform hover:scale-110"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-      </button>
+      />
     </div>
 
     <!-- Grid -->

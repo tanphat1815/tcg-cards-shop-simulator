@@ -5,17 +5,22 @@
  */
 import { useGameStore } from '../stores/gameStore'
 import { useStatsStore } from '../stores/modules/statsStore'
+import BaseModal from './shared/BaseModal.vue'
+import EnhancedButton from './shared/EnhancedButton.vue'
 
 const gameStore = useGameStore()
 const statsStore = useStatsStore()
 </script>
 
 <template>
-  <div v-if="statsStore.showEndDayModal" class="absolute inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm pointer-events-auto">
-    <div class="bg-gray-800 border-2 border-gray-600 rounded-3xl p-8 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.5)] transform animate-fade-in-up flex flex-col">
-      <h2 class="text-3xl font-black text-center text-white mb-2 uppercase tracking-widest">
-        Tổng Kết Ngày {{ statsStore.currentDay }}
-      </h2>
+  <BaseModal
+    :isOpen="statsStore.showEndDayModal"
+    :title="`Tổng Kết Ngày ${statsStore.currentDay}`"
+    size="md"
+    :closeable="false"
+    @close="gameStore.startNewDay()"
+  >
+    <template #default>
       <div class="text-center text-gray-400 mb-8 font-medium">Ca làm việc đã kết thúc!</div>
 
       <div class="space-y-4 mb-8">
@@ -34,23 +39,17 @@ const statsStore = useStatsStore()
           <span class="text-2xl font-black text-yellow-500">+${{ statsStore.dailyStats.revenue.toFixed(2) }}</span>
         </div>
       </div>
+    </template>
 
-      <button 
+    <template #footer>
+      <EnhancedButton
+        variant="success"
+        size="lg"
+        fullWidth
         @click="gameStore.startNewDay()"
-        class="w-full py-4 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white text-xl font-bold uppercase tracking-widest shadow-lg hover:shadow-green-500/30 transition-all hover:scale-105 active:scale-95"
       >
         Bắt đầu ngày mới
-      </button>
-    </div>
-  </div>
+      </EnhancedButton>
+    </template>
+  </BaseModal>
 </template>
-
-<style scoped>
-.animate-fade-in-up {
-  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); scale: 0.95; }
-  to { opacity: 1; transform: translateY(0); scale: 1; }
-}
-</style>
