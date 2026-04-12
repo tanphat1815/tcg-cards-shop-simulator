@@ -136,9 +136,9 @@ export class EnvironmentManager {
 
     this.wallGraphics.clear()
     this.wallGraphics.fillStyle(0x8B4513) // Màu gỗ tối
-    this.wallGraphics.fillRect(x, y, width, 50) // Tường trên
-    this.wallGraphics.fillRect(x, y, 50, height) // Tường trái
-    this.wallGraphics.fillRect(x + width - 50, y, 50, height) // Tường phải
+    this.wallGraphics.fillRect(x - 5, y - 50, width + 10, 50) // Tường trên (vẽ lùi lên trên 50px)
+    this.wallGraphics.fillRect(x - 50, y - 50, 50, height + 50) // Tường trái
+    this.wallGraphics.fillRect(x + width, y - 50, 50, height + 50) // Tường phải
     
     // Tường phía dưới (cổng ra vào)
     this.wallGraphics.fillRect(x, y + height - 50, 200, 50) // Tường dưới trái

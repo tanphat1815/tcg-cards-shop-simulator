@@ -106,18 +106,27 @@ export class FurnitureManager {
    * @param shelf Dữ liệu kệ từ gameStore
    */
   public displayShelf(shelf: ShelfData) {
+    const isDouble = shelf.furnitureId === 'shelf_double'
     const sprite = this.shelvesGroup.create(shelf.x, shelf.y, 'shelf')
+    
     sprite.setData('id', shelf.id)
     sprite.setData('type', 'shelf')
-    sprite.setDepth(DEPTH.FURNITURE) // Lớp 10
+    sprite.setDepth(DEPTH.FURNITURE)
+    
+    // Kệ đôi sẽ có màu đậm hơn và to hơn một chút
+    if (isDouble) {
+      sprite.setTint(0x8B4513) // Darker brown
+      sprite.setScale(1.2, 1.0) // Rộng hơn
+    }
 
     // Khởi tạo Text Label hiển thị thông tin hàng hóa
     const text = this.scene.add.text(shelf.x, shelf.y - 60, this.getShelfInfo(shelf), {
-      fontSize: '12px',
-      color: '#000',
-      backgroundColor: '#fff',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: isDouble ? '#ffeb3b' : '#000', // Gold/Yellow text for double shelf
+      backgroundColor: isDouble ? '#212121' : '#fff',
       padding: { x: 4, y: 2 }
-    }).setDepth(DEPTH.UI)
+    }).setOrigin(0.5).setDepth(DEPTH.UI)
     
     this.shelfTexts[shelf.id] = text
   }
@@ -132,21 +141,44 @@ export class FurnitureManager {
    * @param table Dữ liệu bàn từ gameStore
    */
   public displayTable(table: PlayTableData) {
+    const rotation = table.rotation || 0
+    const isVertical = rotation === 90
+    const w = isVertical ? 40 : 80
+    const h = isVertical ? 80 : 40
+
     // Sprite giả để phục vụ va chạm vật lý
     const sprite = this.tablesGroup.create(table.x, table.y, 'cashier') 
     sprite.setData('id', table.id)
     sprite.setData('type', 'table')
-    sprite.setDepth(DEPTH.TABLE)
-    sprite.setVisible(false) // Ẩn sprite giả, ta sẽ vẽ bàn bằng Graphics/Rectangle
+    sprite.setDepth(DEPTH.TABLE).setSize(w, h).setVisible(false)
 
-    // Vẽ hình ảnh bàn
-    const rect = this.scene.add.rectangle(table.x, table.y, 80, 40, 0x8B4513).setDepth(DEPTH.FURNITURE)
-    const label = this.scene.add.text(table.x, table.y - 30, this.getTableInfo(table), {
+    // Vẽ hình chữ nhật bàn và 2 ghế (Sử dụng Container để dễ quản lý)
+    const container = this.scene.add.container(table.x, table.y)
+    
+    // Mặt bàn (Gỗ)
+    const rect = this.scene.add.rectangle(0, 0, w, h, 0x8B4513).setStrokeStyle(2, 0x5D2906)
+    container.add(rect)
+
+    // Vẽ 2 ghế
+    const chairColor = 0xA0522D
+    if (isVertical) {
+      container.add(this.scene.add.rectangle(0, -h/2 - 10, 24, 20, chairColor).setStrokeStyle(1, 0x5D2906)) // Ghế trên
+      container.add(this.scene.add.rectangle(0, h/2 + 10, 24, 20, chairColor).setStrokeStyle(1, 0x5D2906)) // Ghế dưới
+    } else {
+      container.add(this.scene.add.rectangle(-w/2 - 10, 0, 20, 24, chairColor).setStrokeStyle(1, 0x5D2906)) // Ghế trái
+      container.add(this.scene.add.rectangle(w/2 + 10, 0, 20, 24, chairColor).setStrokeStyle(1, 0x5D2906)) // Ghế phải
+    }
+
+    const label = this.scene.add.text(0, -h/2 - 25, this.getTableInfo(table), {
       fontSize: '10px',
-      color: '#fff'
-    }).setDepth(DEPTH.UI)
-
-    this.tableVisuals[table.id] = { rect, label }
+      color: '#fff',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      padding: { x: 2, y: 1 }
+    }).setOrigin(0.5).setDepth(DEPTH.UI)
+    container.add(label)
+    
+    container.setDepth(DEPTH.FURNITURE)
+    this.tableVisuals[table.id] = { rect: container as any, label }
   }
 
   /**

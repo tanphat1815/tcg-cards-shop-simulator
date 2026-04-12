@@ -12,6 +12,7 @@ interface WorkerNPC {
   targetX: number
   targetY: number
   state: WorkerDuty
+  targetDeskId?: string // Lưu trữ quầy được gán hiện tại
 }
 
 /**
@@ -27,7 +28,7 @@ interface WorkerNPC {
  * 
  * Luồng hoạt động:
  * 1. syncWorkers(): Luôn đảm bảo Sprite nhân viên khớp với dữ liệu thuê trong Store.
- * 2. updateWorkerTarget(): Tự động xác định tọa độ đích (X, Y) khi thay đổi nhiệm vụ.
+ * 2. updateWorkerTarget(): Tự động xác định tọa độ đích (X, Y) khi thay đổi nhiệm vụ hoặc quầy.
  * 3. update(): Chia làm 2 tầng:
  *    - Cập nhật Visual (Label/Animation) mỗi frame (60fps) để mượt mà.
  *    - Cập nhật AI Logic mỗi 100ms để tiết kiệm hiệu năng.
@@ -64,7 +65,7 @@ export class StaffManager {
     }
 
     // 2. Kiểm tra cập nhật/thêm mới: Đảm bảo mọi nhân viên đã thuê đều có Sprite
-    staffStore.hiredWorkers.forEach(w => {
+    staffStore.hiredWorkers.forEach((w, index) => {
       let worker = this.workers.get(w.instanceId)
       
       if (!worker) {
@@ -72,6 +73,9 @@ export class StaffManager {
         const doorPos = EnvironmentManager.START_X + 200 // Default location
         const sprite = this.scene.physics.add.sprite(doorPos, EnvironmentManager.START_Y + 500, 'npc') // Dùng texture 'npc' cho nhân viên
         sprite.setDepth(DEPTH.NPC).setTint(0xaaaaff) // Màu Tint xanh nhạt để phân biệt với khách hàng
+        
+        // Bật va chạm với tường (Nếu muốn nhân viên không đi xuyên tường)
+        // this.scene.physics.add.collider(sprite, (this.scene as MainScene).environmentManager.wallsGroup)
 
         // Tạo Label trạng thái (Cyan text)
         const statusText = this.scene.add.text(sprite.x, sprite.y - 35, '', {
@@ -85,47 +89,66 @@ export class StaffManager {
           statusText,
           targetX: sprite.x,
           targetY: sprite.y,
-          state: w.duty
+          state: w.duty,
+          targetDeskId: w.targetDeskId
         }
         this.workers.set(w.instanceId, worker)
+        this.updateWorkerTarget(worker, index) // Set target ban đầu
       }
 
-      // 3. Cập nhật trạng thái và đích đến nếu duty thay đổi (Duty Change)
-      if (worker.state !== w.duty) {
+      // 3. Cập nhật trạng thái và đích đến nếu duty HOẶC quầy thay đổi
+      if (worker.state !== w.duty || worker.targetDeskId !== w.targetDeskId) {
         worker.state = w.duty
-        this.updateWorkerTarget(worker)
+        worker.targetDeskId = w.targetDeskId
+        this.updateWorkerTarget(worker, index)
       }
     })
   }
 
   /**
    * Xác định tọa độ mục tiêu (Target) trong Shop dựa trên Duty của nhân viên.
+   * @param worker Thực thể nhân viên cần cập nhật đích.
+   * @param index Thứ tự của nhân viên trong danh sách (dùng để phân tán vị trí nghỉ).
    */
-  private updateWorkerTarget(worker: WorkerNPC) {
+  private updateWorkerTarget(worker: WorkerNPC, index: number = 0) {
     const gameStore = useGameStore()
     const startX = EnvironmentManager.START_X
     const startY = EnvironmentManager.START_Y
 
+    // Tìm dữ liệu nhân viên từ Store để lấy targetDeskId
+    const hiredData = useStaffStore().hiredWorkers.find(w => w.instanceId === worker.instanceId)
+
     switch (worker.state) {
       case 'CASHIER': {
-        // Di chuyển tới sau quầy thu ngân số 1
-        const cashiers = Object.values(gameStore.placedCashiers)
-        if (cashiers.length > 0) {
-          const desk = cashiers[0]
+        // Di chuyển tới sau quầy thu ngân được chỉ định (targetDeskId)
+        const deskId = hiredData?.targetDeskId
+        const desk = deskId ? gameStore.placedCashiers[deskId] : Object.values(gameStore.placedCashiers)[0]
+        
+        if (desk) {
           worker.targetX = desk.x
           worker.targetY = desk.y - 40 // Đứng phía sau quầy (phía trên desk)
         }
         break
       }
       case 'STOCKER': {
-        // Di chuyển ngẫu nhiên trong phạm vi Shop
-        worker.targetX = startX + 50 + Math.random() * 300
-        worker.targetY = startY + 50 + Math.random() * 300
+        // Di chuyển tới một kệ hàng ngẫu nhiên đang có trên sàn
+        const shelves = Object.values(gameStore.placedShelves)
+        if (shelves.length > 0) {
+          const shelf = shelves[Math.floor(Math.random() * shelves.length)]
+          // Đứng cạnh kệ (có thể randomize nhẹ quanh kệ)
+          worker.targetX = shelf.x + (Math.random() > 0.5 ? 40 : -40)
+          worker.targetY = shelf.y
+        } else {
+          // Nếu không có kệ, đi lòng vòng trong shop
+          worker.targetX = startX + 100 + Math.random() * 200
+          worker.targetY = startY + 100 + Math.random() * 200
+        }
         break
       }
       case 'NONE': {
         // Di chuyển ra khu vực vỉa hè (Resting area)
-        worker.targetX = startX + 50 + Math.random() * 100
+        // Sử dụng index để phân tán vị trí (mỗi người cách nhau 40px)
+        worker.targetX = startX + 50 + (index * 40)
         worker.targetY = startY + 450 // Phía dưới shop
         break
       }
@@ -162,9 +185,10 @@ export class StaffManager {
     } else {
       worker.sprite.body?.velocity.set(0)
       
-      // Nếu là Stocker, khi tới đích sẽ tự động chọn một điểm mới để đi tiếp
-      if (worker.state === 'STOCKER' && Math.random() < 0.05) {
-        this.updateWorkerTarget(worker)
+      // Nếu là Stocker, khi tới đích kệ sẽ dừng lại 3-5s rồi mới chọn kệ mới (Giả lập kiểm kho)
+      if (worker.state === 'STOCKER' && Math.random() < 0.02) { // 2% cơ hội mỗi 100ms ~ 5s trung bình
+        const index = Array.from(this.workers.keys()).indexOf(worker.instanceId)
+        this.updateWorkerTarget(worker, index)
       }
     }
   }

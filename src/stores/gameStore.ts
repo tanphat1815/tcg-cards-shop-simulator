@@ -129,19 +129,24 @@ export const useGameStore = defineStore('game', {
     cancelBuildMode() { useShopStore().cancelBuildMode() },
     placePlayTable(x: number, y: number) { return useShopStore().placePlayTable(x, y) },
     /** Bắt đầu đặt một món đồ vào Scene Phaser */
-    placeFurniture(x: number, y: number) { return useShopStore().placeFurniture(x, y) },
+    placeFurniture(x: number, y: number, rotation: number = 0) { return useShopStore().placeFurniture(x, y, rotation) },
     /** Thu hồi đồ vật từ Scene về kho */
     pickUpFurniture(instanceId: string, type: 'shelf' | 'table' | 'cashier') { return useShopStore().pickUpFurniture(instanceId, type) },
     warehouseFurniture() { useShopStore().warehouseFurniture() },
 
     // --- Table & Match Logic ---
-    joinTable(tableId: string, instanceId: string) { return useShopStore().joinTable(tableId, instanceId) },
+    joinTable(tableId: string, instanceId: string): number | null { return useShopStore().joinTable(tableId, instanceId) },
     startMatch(tableId: string) { useShopStore().startMatch(tableId) },
     finishMatch(tableId: string) { useShopStore().finishMatch(tableId) },
 
     // --- Staff Management ---
     hireWorker(workerId: string) { return useStaffStore().hireWorker(workerId) },
-    changeWorkerDuty(instanceId: string, duty: any) { useStaffStore().changeWorkerDuty(instanceId, duty) },
+    /**
+     * Thay đổi nhiệm vụ nhân viên và gán vào quầy thu ngân cụ thể.
+     */
+    changeWorkerDuty(instanceId: string, duty: any, targetDeskId?: string) { 
+      useStaffStore().changeWorkerDuty(instanceId, duty, targetDeskId) 
+    },
     terminateWorker(instanceId: string) { useStaffStore().terminateWorker(instanceId) },
 
     /**

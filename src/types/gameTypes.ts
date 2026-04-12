@@ -1,4 +1,4 @@
-export interface CardData {
+ export interface CardData {
   id: string
   name: string
   hp: number
@@ -14,6 +14,8 @@ export interface HiredWorker {
   instanceId: string;
   workerId: string;
   duty: WorkerDuty;
+  /** ID của quầy thu ngân được gán cho nhân viên này (Nếu duty là CASHIER) */
+  targetDeskId?: string;
 }
 
 export interface ShelfTier {
@@ -37,6 +39,8 @@ export interface PlayTableData {
   y: number;
   occupants: (string | null)[]; // instanceIds of NPCs [seat0, seat1]
   matchStartedAt: number | null; // global game time / timestamp
+  /** Góc xoay của bàn (0: Ngang, 90: Dọc) */
+  rotation?: number;
 }
 
 export interface CashierData {

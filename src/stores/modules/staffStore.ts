@@ -52,22 +52,30 @@ export const useStaffStore = defineStore('staff', {
     /**
      * Phân công hoặc thay đổi nhiệm vụ cho nhân viên.
      * 
-     * Quy tắc đặc biệt: 
-     * - Nhiệm vụ 'CASHIER' (Thu ngân) là độc bản. 
-     * - Nếu gán CASHIER cho nhân viên A, nhân viên B đang làm CASHIER sẽ tự động bị Reset về NONE.
+     * Quy tắc đặc biệt cho CASHIER:
+     * - Mỗi quầy thu ngân (Desk) chỉ có thể có tối đa 1 nhân viên trực. 
+     * - Nếu gán nhân viên A vào quầy X, nhân viên B đang trực tại quầy X sẽ bị đẩy về trạng thái NONE.
+     * 
+     * @param instanceId ID của thực thể nhân viên.
+     * @param duty Nhiệm vụ mới.
+     * @param targetDeskId ID của quầy thu ngân (Chỉ dùng khi duty là CASHIER).
      */
-    changeWorkerDuty(instanceId: string, duty: WorkerDuty) {
+    changeWorkerDuty(instanceId: string, duty: WorkerDuty, targetDeskId?: string) {
       const worker = this.hiredWorkers.find(w => w.instanceId === instanceId)
       if (!worker) return
 
-      // Logic Unassign: Đảm bảo shop chỉ có tối đa 1 thu ngân
-      if (duty === 'CASHIER') {
+      // Logic Unassign theo quầy: Đảm bảo 1 quầy chỉ có 1 thu ngân
+      if (duty === 'CASHIER' && targetDeskId) {
         this.hiredWorkers.forEach(w => {
-          if (w.duty === 'CASHIER') w.duty = 'NONE'
+          if (w.duty === 'CASHIER' && w.targetDeskId === targetDeskId) {
+            w.duty = 'NONE'
+            w.targetDeskId = undefined
+          }
         })
       }
 
       worker.duty = duty
+      worker.targetDeskId = (duty === 'CASHIER') ? targetDeskId : undefined
     },
 
     /**

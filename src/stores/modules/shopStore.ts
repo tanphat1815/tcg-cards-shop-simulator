@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { FURNITURE_ITEMS } from '../../config/shopData'
 import { useStatsStore } from './statsStore'
 import { useInventoryStore } from './inventoryStore'
+import { useStaffStore } from './staffStore'
 import type { ShelfData, PlayTableData, CashierData, ShelfTier } from '../../types/gameTypes'
 
 /**
@@ -11,25 +12,32 @@ const createEmptyTier = (): ShelfTier => ({ itemId: null, slots: [], maxSlots: 0
 
 /**
  * Khởi tạo dữ liệu cho một Kệ hàng (Shelf) mới.
+ * Số lượng tầng (tiers) được lấy từ cấu hình FURNITURE_ITEMS.
  */
-const createShelf = (id: string, furnitureId: string, x: number, y: number): ShelfData => ({
-  id,
-  furnitureId,
-  x,
-  y,
-  tiers: [createEmptyTier(), createEmptyTier(), createEmptyTier()] // Mặc định mỗi kệ có 3 tầng
-})
+const createShelf = (id: string, furnitureId: string, x: number, y: number): ShelfData => {
+  const config = FURNITURE_ITEMS[furnitureId]
+  const numTiers = config?.numTiers || 3 // Mặc định 3 tầng nếu không có config
+  
+  return {
+    id,
+    furnitureId,
+    x,
+    y,
+    tiers: Array.from({ length: numTiers }, () => createEmptyTier())
+  }
+}
 
 /**
  * Khởi tạo dữ liệu cho một Bàn chơi bài (Play Table).
  */
-const createPlayTable = (id: string, furnitureId: string, x: number, y: number): PlayTableData => ({
+const createPlayTable = (id: string, furnitureId: string, x: number, y: number, rotation: number = 0): PlayTableData => ({
   id,
   furnitureId,
   x: x,
   y: y,
   occupants: [null, null], // Bàn có tối đa 2 chỗ ngồi
-  matchStartedAt: null
+  matchStartedAt: null,
+  rotation
 })
 
 /**
@@ -162,7 +170,11 @@ export const useShopStore = defineStore('shop', {
 
       const tier = shelf.tiers[tierIndex]
       const isBox = itemData.type === 'box'
-      const maxSlots = isBox ? 4 : 32 // Box chiếm nhiều chỗ hơn Pack
+      
+      // Lấy thông số kỹ thuật từ loại kệ
+      const shelfConfig = FURNITURE_ITEMS[shelf.furnitureId]
+      const slotsPerTier = shelfConfig?.slotsPerTier || 16
+      const maxSlots = isBox ? Math.floor(slotsPerTier / 4) : slotsPerTier // Box chiếm chỗ gấp 4 lần Pack
 
       // Nếu tầng đang trống, gán loại hàng cho tầng này
       if (tier.itemId === null) {
@@ -193,7 +205,10 @@ export const useShopStore = defineStore('shop', {
 
       const tier = shelf.tiers[tierIndex]
       const isBox = itemData.type === 'box'
-      const maxSlots = isBox ? 4 : 32
+      
+      const shelfConfig = FURNITURE_ITEMS[shelf.furnitureId]
+      const slotsPerTier = shelfConfig?.slotsPerTier || 16
+      const maxSlots = isBox ? Math.floor(slotsPerTier / 4) : slotsPerTier
 
       if (tier.itemId === null) {
         tier.itemId = itemId
@@ -311,10 +326,10 @@ export const useShopStore = defineStore('shop', {
      * Đặt nội thất xuống bản đồ tại tọa độ (X, Y).
      * Xử lý cả 2 trường hợp: Đặt đồ mới và Di chuyển đồ cũ.
      */
-    placeFurniture(x: number, y: number) {
+    placeFurniture(x: number, y: number, rotation: number = 0) {
       // Trường hợp 1: Đang di chuyển đồ vật hiện có (từ Edit Mode)
       if (this.editFurnitureData) {
-        const data = { ...this.editFurnitureData, x, y }
+        const data = { ...this.editFurnitureData, x, y, rotation }
         if (data.type === 'shelf') {
           this.placedShelves[data.id] = data
         } else if (data.type === 'cashier') {
@@ -333,9 +348,8 @@ export const useShopStore = defineStore('shop', {
 
       let placedData = null
       if (furnitureId === 'play_table') {
-        // placedData = this.placePlayTable(x, y)
         const id = 'table_' + Date.now()
-        placedData = createPlayTable(id, furnitureId, x, y)
+        placedData = createPlayTable(id, furnitureId, x, y, rotation)
         this.placedTables[id] = placedData
       } else if (furnitureId === 'cashier_desk') {
         const id = 'cashier_' + Date.now()
@@ -428,6 +442,16 @@ export const useShopStore = defineStore('shop', {
       this.editFurnitureData = null
       this.isBuildMode = false
       this.buildItemId = null
+
+      // Edge-Case: Nếu cất quầy thu ngân, phải unassign nhân viên
+      if (data.type === 'cashier') {
+        const staffStore = useStaffStore()
+        staffStore.hiredWorkers.forEach((worker: any) => {
+          if (worker.targetDeskId === data.id) {
+            staffStore.changeWorkerDuty(worker.instanceId, 'NONE')
+          }
+        })
+      }
     },
 
     /** NPC đăng ký vào một vị trí trên bàn chơi bài */

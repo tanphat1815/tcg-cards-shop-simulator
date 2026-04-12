@@ -12,7 +12,7 @@ const statsStore = useStatsStore()
 const inventoryStore = useInventoryStore()
 const shopStore = useShopStore()
 const staffStore = useStaffStore()
-const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF' | 'RENO'>('STOCK')
+const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF' | 'RENO' | 'SETTINGS'>('STOCK')
 import { WORKERS } from '../config/workerData'
 import { EXPANSIONS_LOT_A } from '../config/expansionData'
 
@@ -116,6 +116,13 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
           :class="activeTab === 'RENO' ? 'bg-white text-indigo-700 border-gray-300 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]' : 'text-gray-500 hover:bg-gray-200'"
         >
           🛠️ Cải Tạo (Reno)
+        </button>
+        <button 
+          @click="activeTab = 'SETTINGS'"
+          class="px-6 py-3 font-bold uppercase tracking-wider rounded-t-lg transition-colors border-x border-t border-transparent"
+          :class="activeTab === 'SETTINGS' ? 'bg-white text-indigo-700 border-gray-300 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]' : 'text-gray-500 hover:bg-gray-200'"
+        >
+          ⚙️ Cài Đặt (Settings)
         </button>
       </div>
 
@@ -237,17 +244,34 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                 </div>
                 <div class="flex-grow">
                   <h4 class="font-bold text-gray-900">{{ getWorkerData(hw.workerId)?.name }}</h4>
-                  <div class="flex items-center gap-2 mt-1">
-                    <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold uppercase">Nhiệm vụ:</span>
-                    <select 
-                      v-model="hw.duty" 
-                      @change="staffStore.changeWorkerDuty(hw.instanceId, hw.duty)"
-                      class="text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded px-1 py-0.5 focus:ring-0"
-                    >
-                      <option value="NONE">Đang nghỉ</option>
-                      <option value="CASHIER">Thu ngân</option>
-                      <option value="STOCKER">Xếp hàng</option>
-                    </select>
+                  <div class="flex flex-col gap-1.5 mt-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold uppercase min-w-[60px]">Nhiệm vụ:</span>
+                      <select 
+                        v-model="hw.duty" 
+                        @change="staffStore.changeWorkerDuty(hw.instanceId, hw.duty, (Object.keys(shopStore.placedCashiers).length === 1 ? Object.keys(shopStore.placedCashiers)[0] : hw.targetDeskId))"
+                        class="text-xs font-bold text-indigo-700 bg-white border border-indigo-200 rounded px-1 py-0.5 focus:ring-0"
+                      >
+                        <option value="NONE">Đang nghỉ</option>
+                        <option value="CASHIER">Thu ngân</option>
+                        <option value="STOCKER">Xếp hàng</option>
+                      </select>
+                    </div>
+
+                    <!-- Chỉ hiển thị chọn quầy nếu là Thu ngân và có từ 2 quầy trở lên -->
+                    <div v-if="hw.duty === 'CASHIER' && Object.keys(shopStore.placedCashiers).length > 1" class="flex items-center gap-2">
+                      <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold uppercase min-w-[60px]">Quầy:</span>
+                      <select 
+                        v-model="hw.targetDeskId"
+                        @change="staffStore.changeWorkerDuty(hw.instanceId, hw.duty, hw.targetDeskId)"
+                        class="text-xs font-bold text-emerald-700 bg-white border border-emerald-200 rounded px-1 py-0.5 focus:ring-0"
+                      >
+                        <option disabled value="">-- Chọn quầy --</option>
+                        <option v-for="desk in shopStore.placedCashiers" :key="desk.id" :value="desk.id">
+                          {{ desk.id.includes('default') ? 'Quầy mặc định' : desk.id.replace('cashier_', 'Quầy #') }}
+                        </option>
+                      </select>
+                    </div>
                   </div>
                 </div>
                 <button @click="staffStore.terminateWorker(hw.instanceId)" class="text-red-400 hover:text-red-700 p-2" title="Đuổi việc">
@@ -398,6 +422,30 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
             </div>
           </div>
         </div>
+
+        <!-- Settings Tab -->
+        <div v-if="activeTab === 'SETTINGS'" class="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden max-w-2xl mx-auto">
+          <div class="bg-indigo-700 px-8 py-4 text-white font-bold flex items-center gap-2">
+            <span>⚙️</span> Cấu hình hệ thống & Hiển thị
+          </div>
+          <div class="p-8 space-y-8">
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-indigo-300 transition-colors">
+              <div>
+                <h4 class="font-bold text-gray-900 leading-tight">Hiển thị khung va chạm (Debug Physics)</h4>
+                <p class="text-sm text-gray-500 mt-1">Bật/tắt các đường bao màu sắc giúp kiểm tra lỗi đặt đồ vật.</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" v-model="statsStore.settings.showDebugPhysics" class="sr-only peer">
+                <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500"></div>
+              </label>
+            </div>
+
+            <div class="p-4 bg-indigo-50 rounded-xl border border-indigo-100 text-indigo-800 text-sm">
+              <p><strong>Mẹo:</strong> Bạn cũng có thể nhấn phím <kbd class="px-1.5 py-0.5 bg-white border border-indigo-200 rounded text-xs font-bold">G</kbd> trong khi chơi để bật/tắt nhanh chế độ này.</p>
+            </div>
+          </div>
+        </div>
+
       </div>
 
     </div>

@@ -64,10 +64,16 @@ export default class MainScene extends Phaser.Scene {
 
   // Các biến phục vụ tính năng kéo Camera (Drag to Pan)
   private isDraggingCamera: boolean = false
-  private dragStartX: number = 0
-  private dragStartY: number = 0
-  private camStartX: number = 0
-  private camStartY: number = 0
+  private dragStartX = 0
+  private dragStartY = 0
+  private camStartX = 0
+  private camStartY = 0
+
+  // State xoay đồ vật (0 hoặc 90 độ)
+  private currentRotation = 0
+  
+  // HUD Elements
+  private debugGraphic?: Phaser.GameObjects.Graphics
 
   constructor() {
     super({ key: 'MainScene' })
@@ -115,10 +121,10 @@ export default class MainScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(true).setDepth(DEPTH.PLAYER)
 
     // 6. Cấu hình va chạm (Collisions)
+    this.physics.add.collider(this.player, this.environmentManager.wallsGroup)
     this.physics.add.collider(this.player, this.furnitureManager.shelvesGroup)
     this.physics.add.collider(this.player, this.furnitureManager.tablesGroup)
     this.physics.add.collider(this.player, this.furnitureManager.cashierGroup)
-    this.physics.add.collider(this.player, this.environmentManager.wallsGroup)
 
     // 7. Cấu hình Input (Keyboard/Mouse)
     this.setupInputs()
@@ -126,19 +132,13 @@ export default class MainScene extends Phaser.Scene {
     // 8. Cấu hình Camera (Follow Player)
     this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
     this.cameras.main.setZoom(1)
-    
-    // 9. Đồng bộ hóa dữ liệu (Subscriptions)
+
+    // 9. Đăng ký Store Subscriptions
     this.setupStoreSubscriptions(gameStore)
     this.staffManager.syncWorkers()
 
     // 10. Kích hoạt các vòng lặp AI và Thời gian
     this.npcManager.initializeNPCs()
-
-    // this.time.addEvent({
-    //   delay: 3000,
-    //   callback: () => this.npcManager.spawnNPC(),
-    //   loop: true
-    // })
 
     // Vòng lặp thời gian cốt lõi: 1 giây thực = 1 phút game
     this.time.addEvent({
@@ -205,6 +205,20 @@ export default class MainScene extends Phaser.Scene {
       // Phím X để bật/tắt nhanh chế độ chỉnh sửa nội thất
       this.input.keyboard.on('keydown-X', () => {
         useGameStore().toggleEditMode()
+      })
+
+      // Phím R để xoay đồ vật khi đang trong chế độ Build/Edit
+      this.input.keyboard.on('keydown-R', () => {
+        this.currentRotation = (this.currentRotation === 0) ? 90 : 0
+        // Xóa Ghost cũ để vẽ lại theo hướng mới
+        this.clearGhost()
+      })
+
+      // Phím G để bật/tắt nhanh Debug Physics
+      this.input.keyboard.on('keydown-G', () => {
+        const statsStore = useStatsStore()
+        statsStore.settings.showDebugPhysics = !statsStore.settings.showDebugPhysics
+        this.updateDebugPhysics()
       })
     }
   }
@@ -293,9 +307,20 @@ export default class MainScene extends Phaser.Scene {
   }
 
   /**
+   * Cập nhật trạng thái hiển thị Debug Physics dựa trên Settings.
+   */
+  private updateDebugPhysics() {
+    const statsStore = useStatsStore()
+    if (!this.debugGraphic) {
+      this.debugGraphic = this.physics.world.createDebugGraphic()
+    }
+    this.debugGraphic.setVisible(statsStore.settings.showDebugPhysics)
+  }
+
+  /**
    * Vòng lặp Game chính (60fps).
    */
-  update(time: number) {
+  update(time: number, _delta: number) {
     if (!this.cursors || !this.player.body || !this.keyE) return
 
     const store = useGameStore()
@@ -322,6 +347,12 @@ export default class MainScene extends Phaser.Scene {
       this.handlePlayerMovement()
       this.clearGhostIfNecessary()
     }
+
+    // Cập nhật trạng thái Debug Physics
+    this.updateDebugPhysics()
+    
+    // 1. Phục hồi Scale nếu Camera bị thay đổi
+    // (Logic này sẽ được bổ sung nếu cần thiết)
 
     // 5. Cập nhật hiệu ứng lớp phủ Border khi ở chế độ chỉnh sửa
     this.updateEditOverlay(store)
@@ -499,18 +530,40 @@ export default class MainScene extends Phaser.Scene {
    */
   private updateGhostPosition(pointer: Phaser.Input.Pointer, store: any) {
     if (!this.ghostSprite && !this.ghostRectangle) {
-      const isTable = store.buildItemId === 'play_table' || store.editFurnitureData?.type === 'table'
-      const isCashier = store.buildItemId === 'cashier_desk' || store.editFurnitureData?.type === 'cashier'
+      const furnitureId = store.buildItemId || store.editFurnitureData?.furnitureId
+      const isTable = furnitureId === 'play_table'
+      const isCashier = furnitureId === 'cashier_desk'
       
       if (isTable) {
-        this.ghostRectangle = this.add.rectangle(0, 0, 60, 40, 0x7f8c8d).setStrokeStyle(2, 0x95a5a6)
-        this.ghostRectangle.setAlpha(0.6).setDepth(DEPTH.GHOST)
-        this.ghostText = this.add.text(0, 0, 'TABLE', { fontSize: '10px', color: '#fff' }).setOrigin(0.5)
-        this.ghostText.setAlpha(0.6).setDepth(DEPTH.GHOST + 1)
+        // Tạo Ghost Table chi tiết hơn (Bàn + 2 Ghế)
+        const isVer = this.currentRotation === 90
+        const w = isVer ? 40 : 80
+        const h = isVer ? 80 : 40
+        
+        const container = this.add.container(0, 0)
+        const rect = this.add.rectangle(0, 0, w, h, 0x7f8c8d).setStrokeStyle(2, 0x95a5a6)
+        container.add(rect)
+        
+        // Vẽ 2 ghế mờ
+        if (isVer) {
+           container.add(this.add.rectangle(0, -h/2 - 10, 24, 20, 0x7f8c8d, 0.5))
+           container.add(this.add.rectangle(0, h/2 + 10, 24, 20, 0x7f8c8d, 0.5))
+        } else {
+           container.add(this.add.rectangle(-w/2 - 10, 0, 20, 24, 0x7f8c8d, 0.5))
+           container.add(this.add.rectangle(w/2 + 10, 0, 20, 24, 0x7f8c8d, 0.5))
+        }
+        
+        container.setAlpha(0.6).setDepth(DEPTH.GHOST)
+        this.ghostRectangle = container as any
+        
+        this.ghostText = this.add.text(0, -h/2 - 20, 'ROTATE: R', { fontSize: '10px', color: '#fff' }).setOrigin(0.5)
+        this.ghostText.setDepth(DEPTH.GHOST + 1)
       } else {
         const texture = isCashier ? 'cashier' : 'shelf'
         this.ghostSprite = this.add.sprite(0, 0, texture)
         this.ghostSprite.setAlpha(0.6).setDepth(DEPTH.GHOST)
+        
+        // Hiện gợi ý xoay nếu là vật thể có thể xoay (hiện tại mới bàn chơi hỗ trợ)
       }
     }
 
@@ -529,7 +582,7 @@ export default class MainScene extends Phaser.Scene {
    * - Không được đè lên vị trí người chơi đang đứng.
    */
   private validatePlacement(pointer: Phaser.Input.Pointer): boolean {
-    const pad = 30
+    const pad = 10 // Giảm từ 30 xuống 10 để cho phép đặt đồ sát tường hơn
     const bounds = this.environmentManager.getShopBounds()
     
     // Kiểm tra nằm ngoài Shop
@@ -538,12 +591,11 @@ export default class MainScene extends Phaser.Scene {
       return false
     }
 
-    // Kiểm tra và chạm với các vật thể thuộc Static Groups
-    const w = this.ghostRectangle ? 60 : 40
-    const h = this.ghostRectangle ? 40 : 40
+    // Kiểm tra va chạm với các vật thể. Sử dụng hitbox nhỏ hơn visual để dễ đặt đồ (Sửa lỗi "vướng")
+    const w = this.ghostRectangle ? 50 : 30
+    const h = this.ghostRectangle ? 30 : 30
     const rect = new Phaser.Geom.Rectangle(pointer.worldX - w/2, pointer.worldY - h/2, w, h)
 
-    let collided = false
     const obstacleGroups = [
       this.environmentManager.wallsGroup,
       this.furnitureManager.cashierGroup,
@@ -585,14 +637,35 @@ export default class MainScene extends Phaser.Scene {
   }
 
   private updateGhostVisual() {
-    const color = this.isPlacementValid ? 0x00ff00 : 0xff0000
-    if (this.ghostRectangle) this.ghostRectangle.setFillStyle(this.isPlacementValid ? 0x7f8c8d : 0xff0000, 0.6)
-    else if (this.ghostSprite) this.ghostSprite.setTint(color)
+    const alpha = 0.6
+    const depth = DEPTH.GHOST + 10 // Đảm bảo luôn nằm trên cùng
+    
+    // Nếu là Container (Bàn chơi)
+    if (this.ghostRectangle instanceof Phaser.GameObjects.Container) {
+      this.ghostRectangle.setDepth(depth)
+      this.ghostRectangle.iterate((child: any) => {
+        if (child instanceof Phaser.GameObjects.Shape) {
+          child.setFillStyle(this.isPlacementValid ? 0x7f8c8d : 0xff0000, alpha)
+        }
+      })
+    } 
+    // Nếu là Rectangle thông thường
+    else if (this.ghostRectangle instanceof Phaser.GameObjects.Rectangle) {
+      this.ghostRectangle.setDepth(depth)
+      this.ghostRectangle.setFillStyle(this.isPlacementValid ? 0x7f8c8d : 0xff0000, alpha)
+    }
+    // Nếu là Sprite
+    else if (this.ghostSprite) {
+      this.ghostSprite.setDepth(depth)
+      this.ghostSprite.setTint(this.isPlacementValid ? 0xffffff : 0xff0000)
+      this.ghostSprite.setAlpha(alpha)
+    }
   }
 
   private placeFurniture(pointer: Phaser.Input.Pointer, store: any) {
-    const placedData = store.placeFurniture(pointer.worldX, pointer.worldY)
+    const placedData = store.placeFurniture(pointer.worldX, pointer.worldY, this.currentRotation)
     this.lastPlacementTime = this.time.now
+    this.currentRotation = 0 // Reset rotation cho lần tới
     
     if (placedData) {
       this.furnitureManager.addFurnitureToScene(placedData)
@@ -626,12 +699,31 @@ export default class MainScene extends Phaser.Scene {
 
   /**
    * Vẽ vùng báo hiệu vật cản (vùng đỏ) khi ở chế độ đặt đồ.
+   * Nếu ở chế độ Debug, vẽ thêm biên giới shop để người dùng nhận diện vùng pad.
    */
   private drawPlacementVisualizer() {
     this.placementGraphics.clear()
-    this.placementGraphics.fillStyle(0xff0000, 0.3)
     
     const store = useGameStore()
+    const statsStore = useStatsStore()
+    const bounds = this.environmentManager.getShopBounds()
+    const pad = 10
+
+    // 1. Vẽ vùng biên giới shop (Chỉ hiện khi Debug G được bật)
+    if (statsStore.settings.showDebugPhysics) {
+      this.placementGraphics.lineStyle(2, 0x00ff00, 0.5)
+      this.placementGraphics.strokeRect(bounds.x + pad, bounds.y + pad, bounds.w - pad*2, bounds.h - pad*2)
+      
+      // Vẽ vùng "Cấm" phía ngoài pad
+      this.placementGraphics.fillStyle(0xff0000, 0.1)
+      this.placementGraphics.fillRect(bounds.x, bounds.y, bounds.w, pad) // Top
+      this.placementGraphics.fillRect(bounds.x, bounds.y + bounds.h - pad, bounds.w, pad) // Bottom
+      this.placementGraphics.fillRect(bounds.x, bounds.y, pad, bounds.h) // Left
+      this.placementGraphics.fillRect(bounds.x + bounds.w - pad, bounds.y, pad, bounds.h) // Right
+    }
+
+    // 2. Vẽ vùng va chạm của các vật thể hiện có
+    this.placementGraphics.fillStyle(0xff0000, 0.3)
     const obstacleGroups = [
       this.environmentManager.wallsGroup,
       this.furnitureManager.cashierGroup,

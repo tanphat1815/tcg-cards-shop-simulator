@@ -21,6 +21,10 @@ export interface FurnitureItemInfo {
   requiredLevel: number;
   capacityStr: string;
   description: string;
+  /** Số tầng của kệ hàng (Ví dụ: 3 cho kệ đơn, 4 cho kệ đôi) */
+  numTiers?: number;
+  /** Sức chứa tối đa của mỗi tầng (Ví dụ: 16 cho kệ đơn, 32 cho kệ đôi) */
+  slotsPerTier?: number;
 }
 
 export const STOCK_ITEMS: Record<string, StockItemInfo> = {
@@ -75,15 +79,19 @@ export const FURNITURE_ITEMS: Record<string, FurnitureItemInfo> = {
     buyPrice: 300,
     requiredLevel: 3,
     capacityStr: '48 Slots (3x16)',
-    description: 'Kệ gỗ 1 mặt tiêu chuẩn. Có thể bày 48 hộp bài.'
+    description: 'Kệ gỗ 1 mặt tiêu chuẩn. Có thể bày 48 hộp bài.',
+    numTiers: 3,
+    slotsPerTier: 16
   },
   'shelf_double': {
     id: 'shelf_double',
     name: 'Double Sided Shelf',
     buyPrice: 750,
     requiredLevel: 11,
-    capacityStr: '96 Slots (6x16)',
-    description: 'Kệ trung tâm 2 mặt cao cấp. Sinh lời cực mạnh.'
+    capacityStr: '128 Slots (4x32)',
+    description: 'Kệ trung tâm 2 mặt cao cấp. Sinh lời cực mạnh.',
+    numTiers: 4,
+    slotsPerTier: 32
   },
   'play_table': {
     id: 'play_table',

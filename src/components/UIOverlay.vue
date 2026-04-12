@@ -68,7 +68,10 @@ const isInventoryMinimized = ref(false)
 <template>
   <div class="absolute top-0 left-0 p-6 w-full h-full pointer-events-none flex flex-col justify-between z-10 box-border">
     <!-- Top-Center: Clock & Day -->
-    <div class="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-auto bg-gray-900/90 backdrop-blur border-2 border-gray-700/80 rounded-2xl px-8 py-3 shadow-2xl flex flex-col items-center min-w-[200px]">
+    <div 
+      class="absolute top-6 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur border-2 border-gray-700/80 rounded-2xl px-8 py-3 shadow-2xl flex flex-col items-center min-w-[200px]"
+      :class="gameStore.isBuildMode || gameStore.isEditMode ? 'pointer-events-none opacity-50' : 'pointer-events-auto'"
+    >
       <div class="text-gray-400 font-bold uppercase tracking-widest text-sm mb-1">
         Ngày {{ gameStore.currentDay }}
       </div>
@@ -101,9 +104,14 @@ const isInventoryMinimized = ref(false)
     </div>
 
     <!-- Top-left: Balance & Stats -->
-    <div class="pointer-events-auto grid items-start justify-items-start">
+    <div class="grid items-start justify-items-start">
       <Transition name="panel-slide" mode="out-in">
-        <div v-if="!isShopManagerMinimized" key="panel" class="col-start-1 row-start-1 bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-sm relative flex flex-col">
+        <div 
+          v-if="!isShopManagerMinimized" 
+          key="panel" 
+          class="col-start-1 row-start-1 bg-gray-900/80 backdrop-blur text-white p-5 rounded-2xl shadow-xl border border-gray-700/50 max-w-sm relative flex flex-col"
+          :class="gameStore.isBuildMode || gameStore.isEditMode ? 'pointer-events-none opacity-50 scale-95 origin-top-left' : 'pointer-events-auto'"
+        >
           <button @click="isShopManagerMinimized = true" class="absolute -top-2 -right-2 bg-gray-800 hover:bg-gray-700 text-gray-400 p-1.5 rounded-full border border-gray-700 shadow-lg transition-transform hover:scale-110">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M20 12H4" /></svg>
           </button>
@@ -139,13 +147,13 @@ const isInventoryMinimized = ref(false)
           </div>
 
           <div class="mt-5 pt-5 border-t border-gray-700/50 flex gap-3">
-            <button @click="gameStore.setShowOnlineShop(true)" class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 font-black italic">
+            <button @click="gameStore.setShowOnlineShop(true)" class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 font-black italic pointer-events-auto">
               🛒 SHOP
             </button>
-            <button @click="gameStore.setShowBuildMenu(true)" class="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/10 transform hover:-translate-y-0.5 flex items-center justify-center gap-2" title="Mở menu xây dựng">
+            <button @click="gameStore.setShowBuildMenu(true)" class="bg-gray-800 hover:bg-gray-700 text-green-400 border border-green-500/30 font-bold py-3 px-4 rounded-xl transition-all shadow-lg hover:shadow-green-500/10 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 pointer-events-auto" title="Mở menu xây dựng">
               🏗️
             </button>
-            <button @click="gameStore.setShowSettings(true)" class="bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700/50 font-bold py-3 px-4 rounded-xl transition-all shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-2" title="Cài đặt">
+            <button @click="gameStore.setShowSettings(true)" class="bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-700/50 font-bold py-3 px-4 rounded-xl transition-all shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-2 pointer-events-auto" title="Cài đặt">
               ⚙️
             </button>
           </div>
@@ -165,9 +173,14 @@ const isInventoryMinimized = ref(false)
     </div>
 
     <!-- Bottom-right: Inventory -->
-    <div class="absolute bottom-6 right-6 pointer-events-auto flex flex-col items-end gap-3 max-w-sm w-full">
+    <div class="absolute bottom-6 right-6 flex flex-col items-end gap-3 max-w-sm w-full">
       <Transition name="panel-slide" mode="out-in">
-        <div v-if="!isInventoryMinimized" key="panel" class="w-full bg-gray-900/80 backdrop-blur text-white p-5 rounded-3xl shadow-2xl border border-gray-700/50 relative flex flex-col overflow-hidden max-h-[400px]">
+        <div 
+          v-if="!isInventoryMinimized" 
+          key="panel" 
+          class="w-full bg-gray-900/80 backdrop-blur text-white p-5 rounded-3xl shadow-2xl border border-gray-700/50 relative flex flex-col overflow-hidden max-h-[400px]"
+          :class="gameStore.isBuildMode || gameStore.isEditMode ? 'pointer-events-none opacity-50 scale-95 origin-bottom-right' : 'pointer-events-auto'"
+        >
           <button @click="isInventoryMinimized = true" class="absolute -top-1 -right-1 bg-gray-800 hover:bg-gray-700 text-gray-400 p-2 rounded-full border border-gray-700 shadow-lg transition-transform hover:scale-110">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7" /></svg>
           </button>
