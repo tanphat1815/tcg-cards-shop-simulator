@@ -66,8 +66,9 @@ export class NPCManager {
    */
   public spawnNPC() {
     const gameStore = useGameStore()
-    if (gameStore.shopState !== 'OPEN') return
-    if (this.customers.length >= 10) return
+    // Ngừng spawn nếu shop đã đóng hoặc quá 20:00 (1200 phút)
+    if (gameStore.shopState !== 'OPEN' || gameStore.timeInMinutes >= 1200) return
+    if (this.customers.length >= 15) return
 
     const doorLocation = this.environmentManager.getDoorLocation()
     const npcSprite = this.scene.physics.add.sprite(doorLocation.x, doorLocation.y + 50, 'npc')
@@ -109,7 +110,8 @@ export class NPCManager {
    * @param time Current game time in milliseconds
    */
   updateNPCs(time: number) {
-    const shopStore = useShopStore()
+    const gameStore = useGameStore()
+    const isClosingTime = gameStore.timeInMinutes >= 1200 || gameStore.shopState === 'CLOSED'
     
     for (let i = this.customers.length - 1; i >= 0; i--) {
       const customer = this.customers[i]
@@ -120,9 +122,24 @@ export class NPCManager {
       this.updateStatusText(customer, time)
       this.handleStuckRecovery(customer, time)
 
+      // LOGIC ĐÓNG CỬA: Nếu đã hết giờ hoặc shop đóng
+      if (isClosingTime && customer.state !== 'LEAVE') {
+         // Khách chơi bài hoặc đang tìm bàn -> Về ngay
+         if (customer.state === 'PLAYING' || customer.state === 'WANT_TO_PLAY' || customer.state === 'SEEK_TABLE') {
+            this.npcLeaveShop(customer)
+            continue
+         }
+         // Khách đang vãng lai hoặc tìm đồ mà chưa mua gì -> Về ngay
+         if ((customer.state === 'WANDER' || customer.state === 'SEEK_ITEM') && customer.targetPrice === 0) {
+            this.npcLeaveShop(customer)
+            continue
+         }
+         // Lưu ý: Nếu đang ở INTERACT, GO_CASHIER hoặc WAITING, chúng ta để họ thanh toán nốt rồi check ở dưới
+      }
+
       // Kiểm tra nếu NPC đang đợi thanh toán mà không còn trong hàng chờ của Store (đã được thanh toán)
       if (customer.state === 'WAITING' || customer.state === 'GO_CASHIER') {
-        const isInQueue = shopStore.waitingQueue.some(item => item.instanceId === customer.instanceId)
+        const isInQueue = gameStore.waitingQueue.some((item: any) => item.instanceId === customer.instanceId)
         if (!isInQueue) {
           console.log(`[CHECKOUT] NPC ${customer.instanceId} served. Leaving now.`)
           this.npcLeaveShop(customer)
