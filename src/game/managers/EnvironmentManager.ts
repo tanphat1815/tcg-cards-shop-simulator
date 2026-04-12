@@ -259,7 +259,8 @@ export class EnvironmentManager {
           const nextH = BASE_SHOP_HEIGHT + nextDim.extraH
 
           if (store.settings.expansionPreviewStyle === 'BLUEPRINT') {
-            this.scene.previewGraphics.lineStyle(2, 0x00ffff, 0.4)
+            console.log(`DEBUG: Drawing Blueprint at ${startX},${startY} with size ${nextW}x${nextH}`)
+            this.scene.previewGraphics.lineStyle(3, 0x00ffff, 1.0)
             this.drawDashedRect(startX, startY, nextW, nextH, 0x00ffff)
           } else {
             // GLOW Style
@@ -349,7 +350,7 @@ export class EnvironmentManager {
     const gap = 5
     const graphics = this.scene.previewGraphics
     
-    graphics?.lineStyle(2, color, 0.6)
+    graphics?.lineStyle(3, color, 1.0)
     
     // Draw top
     let currentX = x

@@ -1,5 +1,7 @@
 import Phaser from 'phaser'
 import { useGameStore } from '../stores/gameStore'
+import { useStatsStore } from '../stores/modules/statsStore'
+import { useShopStore } from '../stores/modules/shopStore'
 import playerImg from '../assets/images/player.svg'
 import npcImg from '../assets/images/npc.svg'
 import shelfImg from '../assets/images/shelf.svg'
@@ -116,9 +118,14 @@ export default class MainScene extends Phaser.Scene {
     })
 
     // 11. Khởi động vòng lặp thời gian (Tick mỗi giây thực = 1 phút game)
+    // Chỉ tick khi shop đang MỞ CỬA
     this.time.addEvent({
       delay: 1000,
-      callback: () => gameStore.tickTime(1),
+      callback: () => {
+        if (gameStore.shopState === 'OPEN') {
+          gameStore.tickTime(1)
+        }
+      },
       loop: true
     })
 
@@ -217,17 +224,32 @@ export default class MainScene extends Phaser.Scene {
   }
 
   private setupStoreSubscriptions(gameStore: any) {
-    let lastExpansionLevel = gameStore.expansionLevel
-    let lastSettings = JSON.stringify(gameStore.settings)
+    const statsStore = useStatsStore()
+    const shopStore = useShopStore()
 
-    gameStore.$subscribe((_mutation: any, state: any) => {
+    let lastExpansionLevel = statsStore.expansionLevel
+    let lastSettings = JSON.stringify(statsStore.settings)
+
+    // Lắng nghe statsStore (Cài đặt, Level)
+    statsStore.$subscribe((_mutation, state) => {
       const currentSettings = JSON.stringify(state.settings)
       if (state.expansionLevel !== lastExpansionLevel || currentSettings !== lastSettings) {
+        console.log("DEBUG: statsStore changed, refreshing environment")
         lastExpansionLevel = state.expansionLevel
         lastSettings = currentSettings
         this.environmentManager.refreshEnvironment()
       }
+    })
 
+    // Lắng nghe shopState thay đổi (ví dụ: spawn NPC khi mở cửa)
+    shopStore.$subscribe((_mutation, state) => {
+       // Refresh khi mở rộng hoặc thay đổi trạng thái shop
+       if (state.shopState === 'OPEN') {
+         // Thực hiện các logic khi mở cửa nếu cần
+       }
+    })
+
+    gameStore.$subscribe((_mutation: any, state: any) => {
       if (state.showEndDayModal) {
         this.npcManager.cleanupAllNPCs()
       }
