@@ -4,24 +4,37 @@ import { useStatsStore } from './statsStore'
 import { useInventoryStore } from './inventoryStore'
 import type { ShelfData, PlayTableData, CashierData, ShelfTier } from '../../types/gameTypes'
 
+/**
+ * Tạo một tầng kệ hàng (Tier) trống.
+ */
 const createEmptyTier = (): ShelfTier => ({ itemId: null, slots: [], maxSlots: 0 })
+
+/**
+ * Khởi tạo dữ liệu cho một Kệ hàng (Shelf) mới.
+ */
 const createShelf = (id: string, furnitureId: string, x: number, y: number): ShelfData => ({
   id,
   furnitureId,
   x,
   y,
-  tiers: [createEmptyTier(), createEmptyTier(), createEmptyTier()]
+  tiers: [createEmptyTier(), createEmptyTier(), createEmptyTier()] // Mặc định mỗi kệ có 3 tầng
 })
 
+/**
+ * Khởi tạo dữ liệu cho một Bàn chơi bài (Play Table).
+ */
 const createPlayTable = (id: string, furnitureId: string, x: number, y: number): PlayTableData => ({
   id,
   furnitureId,
   x: x,
   y: y,
-  occupants: [null, null],
+  occupants: [null, null], // Bàn có tối đa 2 chỗ ngồi
   matchStartedAt: null
 })
 
+/**
+ * Khởi tạo dữ liệu cho Quầy thu ngân (Cashier).
+ */
 const createCashier = (id: string, furnitureId: string, x: number, y: number): CashierData => ({
   id,
   furnitureId,
@@ -30,38 +43,57 @@ const createCashier = (id: string, furnitureId: string, x: number, y: number): C
 })
 
 /**
- * Store quản lý shop, furniture, build mode
+ * ShopStore - Quản lý toàn bộ cấu trúc vật lý của cửa hàng và luồng bán hàng.
+ * 
+ * Các trách nhiệm chính:
+ * - Lưu trữ vị trí và trạng thái của toàn bộ nội thất (Kệ, Bàn, Quầy).
+ * - Quản lý chế độ Xây dựng (Build Mode) và Chỉnh sửa (Edit Mode).
+ * - Điều phối hàng hóa trên kệ (Xếp hàng, dọn kệ).
+ * - Quản lý hàng chờ (Queue) của khách hàng và quy trình thanh toán.
  */
 export const useShopStore = defineStore('shop', {
   state: () => ({
+    /** Danh sách kệ hàng đang đặt trong shop */
     placedShelves: {} as Record<string, ShelfData>,
+    /** Danh sách bàn chơi bài đang đặt */
     placedTables: {} as Record<string, PlayTableData>,
+    /** Danh sách quầy thu ngân */
     placedCashiers: {
       'cashier_default': createCashier('cashier_default', 'cashier_desk', 1100, 1100)
     } as Record<string, CashierData>,
+    /** Kho lưu trữ các món nội thất đã mua nhưng chưa đặt */
     purchasedFurniture: {} as Record<string, number>,
+    
+    // Trạng thái UI/UX
     activeShelfId: null as string | null,
     showShelfMenu: false,
     showBinderMenu: false,
     showBuildMenu: false,
+    showOnlineShop: false,
+    
+    // Trạng thái Logic Xây dựng
     isBuildMode: false,
     buildItemId: null as string | null,
     isEditMode: false,
-    editFurnitureData: null as any, // Stores data of the item being moved
-    showOnlineShop: false,
+    /** Chứa dữ liệu vật dụng đang được "nhấc lên" để di chuyển */
+    editFurnitureData: null as any, 
+    
+    // Trạng thái Shop
     shopState: 'CLOSED' as 'OPEN' | 'CLOSED',
     waitingCustomers: 0,
+    /** Hàng chờ thanh toán (First-in, First-out) */
     waitingQueue: [] as { instanceId: string, price: number }[],
   }),
   actions: {
     /**
-     * Đặt trạng thái shop
+     * Mở hoặc Đóng cửa shop.
      */
     setShopState(newState: 'OPEN' | 'CLOSED') {
       this.shopState = newState
     },
+
     /**
-     * Thêm khách hàng vào hàng chờ
+     * Đưa khách hàng vào hàng chờ thanh toán.
      * @param price Số tiền khách sẽ trả
      * @param instanceId ID của NPC khách hàng
      */
@@ -69,9 +101,10 @@ export const useShopStore = defineStore('shop', {
       this.waitingCustomers++
       this.waitingQueue.push({ instanceId, price })
     },
+
     /**
-     * Phục vụ khách hàng đầu tiên trong hàng chờ
-     * @returns instanceId của khách vừa thanh toán để Phaser biết cần giải phóng NPC
+     * Phục vụ khách hàng đứng đầu hàng chờ.
+     * Cộng tiền, cộng kinh nghiệm (XP) và trả về ID khách để Phaser giải phóng NPC.
      */
     serveCustomer(): string | null {
       const statsStore = useStatsStore()
@@ -84,20 +117,20 @@ export const useShopStore = defineStore('shop', {
         statsStore.addMoney(price)
         statsStore.dailyStats.customersServed++
         statsStore.dailyStats.revenue += price
-
-        // XP Reward: 5 XP
         statsStore.gainExp(5)
         return instanceId
       }
       return null
     },
+
     /**
-     * Buộc kết thúc ngày
+     * Buộc kết thúc ngày sớm:
+     * - Đóng cửa hàng ngay lập tức.
+     * - Hiển thị Modal báo cáo doanh thu từ StatsStore.
      */
     forceEndDay() {
-      const statsStore = useStatsStore()
       this.shopState = 'CLOSED'
-      statsStore.showEndDayModal = true
+      useStatsStore().showEndDayModal = true
     },
     /**
      * Mở menu quản lý kệ
@@ -114,8 +147,9 @@ export const useShopStore = defineStore('shop', {
       this.activeShelfId = null
       this.showShelfMenu = false
     },
+
     /**
-     * Chuyển item vào tier slot
+     * Xếp 1 món đồ từ kho hàng của shop (shopInventory) vào 1 tầng của kệ.
      */
     moveToTierSlot(itemId: string, tierIndex: number) {
       const inventoryStore = useInventoryStore()
@@ -128,25 +162,26 @@ export const useShopStore = defineStore('shop', {
 
       const tier = shelf.tiers[tierIndex]
       const isBox = itemData.type === 'box'
-      const maxSlots = isBox ? 4 : 32
+      const maxSlots = isBox ? 4 : 32 // Box chiếm nhiều chỗ hơn Pack
 
-      // Tier is empty: claim it for this item type
+      // Nếu tầng đang trống, gán loại hàng cho tầng này
       if (tier.itemId === null) {
         tier.itemId = itemId
         tier.maxSlots = maxSlots
         tier.slots = []
       }
-      // Tier type mismatch: reject
+      
+      // Kiểm tra loại hàng và sức chứa
       if (tier.itemId !== itemId) return
-      // Tier is full: reject
       if (tier.slots.length >= tier.maxSlots) return
 
       tier.slots.push(itemId)
       inventoryStore.shopInventory[itemId]--
       if (inventoryStore.shopInventory[itemId] === 0) delete inventoryStore.shopInventory[itemId]
     },
+
     /**
-     * Điền đầy tier
+     * Tự động xếp đầy hàng vào một tầng kệ nếu kho còn đủ.
      */
     fillTier(itemId: string, tierIndex: number) {
       const inventoryStore = useInventoryStore()
@@ -177,8 +212,9 @@ export const useShopStore = defineStore('shop', {
       inventoryStore.shopInventory[itemId] -= toAdd
       if (inventoryStore.shopInventory[itemId] <= 0) delete inventoryStore.shopInventory[itemId]
     },
+
     /**
-     * Xóa tier
+     * Thu hồi toàn bộ hàng từ một tầng kệ về kho.
      */
     clearTier(shelfId: string, tierIndex: number) {
       const inventoryStore = useInventoryStore()
@@ -189,6 +225,8 @@ export const useShopStore = defineStore('shop', {
 
       if (!inventoryStore.shopInventory[tier.itemId]) inventoryStore.shopInventory[tier.itemId] = 0
       inventoryStore.shopInventory[tier.itemId] += tier.slots.length
+      
+      // Reset tầng về trạng thái trống
       tier.itemId = null
       tier.slots = []
       tier.maxSlots = 0
@@ -202,14 +240,14 @@ export const useShopStore = defineStore('shop', {
       if (!shelf) return
       shelf.tiers.forEach((_, i) => this.clearTier(shelf.id, i))
     },
+
     /**
-     * NPC lấy item từ slot
+     * Logic NPC lấy sản phẩm: Chọn ngẫu nhiên một tầng có hàng và lấy 1 món.
      */
     npcTakeItemFromSlot(shelfId: string) {
       const shelf = this.placedShelves[shelfId]
       if (!shelf) return null
 
-      // Find tiers that have items
       const filledTiers = shelf.tiers.map((t, idx) => ({ t, idx })).filter(x => x.t.itemId && x.t.slots.length > 0)
       if (filledTiers.length === 0) return null
 
@@ -217,7 +255,7 @@ export const useShopStore = defineStore('shop', {
       const tier = picked.t
       const itemId = tier.itemId!
 
-      tier.slots.pop()
+      tier.slots.pop() // Xóa item khỏi kệ
       if (tier.slots.length === 0) {
         tier.itemId = null
         tier.maxSlots = 0
@@ -227,8 +265,9 @@ export const useShopStore = defineStore('shop', {
       statsStore.dailyStats.itemsSold++
       return itemId
     },
+
     /**
-     * Mua furniture
+     * Mua furniture từ cửa hàng Online
      */
     buyFurniture(furnitureId: string) {
       const statsStore = useStatsStore()
@@ -242,6 +281,7 @@ export const useShopStore = defineStore('shop', {
       this.purchasedFurniture[furnitureId]++
       return true
     },
+
     /**
      * Bắt đầu build mode
      */
@@ -257,7 +297,7 @@ export const useShopStore = defineStore('shop', {
       this.isBuildMode = false
       this.buildItemId = null
     },
-    /**
+     /**
      * Đặt bàn chơi
      */
     placePlayTable(x: number, y: number) {
@@ -268,10 +308,11 @@ export const useShopStore = defineStore('shop', {
       return newTable
     },
     /**
-     * Đặt furniture
+     * Đặt nội thất xuống bản đồ tại tọa độ (X, Y).
+     * Xử lý cả 2 trường hợp: Đặt đồ mới và Di chuyển đồ cũ.
      */
     placeFurniture(x: number, y: number) {
-      // Case 1: Re-placing an existing item in Edit Mode
+      // Trường hợp 1: Đang di chuyển đồ vật hiện có (từ Edit Mode)
       if (this.editFurnitureData) {
         const data = { ...this.editFurnitureData, x, y }
         if (data.type === 'shelf') {
@@ -286,13 +327,16 @@ export const useShopStore = defineStore('shop', {
         return data
       }
 
-      // Case 2: Placing a new item from Build Menu
+      // Trường hợp 2: Đặt vật phẩm mới từ kho mua sắm
       const furnitureId = this.buildItemId
       if (!furnitureId) return null
 
       let placedData = null
       if (furnitureId === 'play_table') {
-        placedData = this.placePlayTable(x, y)
+        // placedData = this.placePlayTable(x, y)
+        const id = 'table_' + Date.now()
+        placedData = createPlayTable(id, furnitureId, x, y)
+        this.placedTables[id] = placedData
       } else if (furnitureId === 'cashier_desk') {
         const id = 'cashier_' + Date.now()
         placedData = createCashier(id, furnitureId, x, y)
@@ -303,7 +347,7 @@ export const useShopStore = defineStore('shop', {
         this.placedShelves[id] = placedData
       }
 
-      // Remove from purchased
+      // Trừ số lượng trong kho nội thất
       if (this.purchasedFurniture[furnitureId] > 0) {
         this.purchasedFurniture[furnitureId]--
         if (this.purchasedFurniture[furnitureId] === 0) {
@@ -314,17 +358,17 @@ export const useShopStore = defineStore('shop', {
       this.cancelBuildMode()
       return placedData
     },
-    /**
-     * Toggle edit mode
-     */
+
+    /** Bật/Tắt chế độ chỉnh sửa vị trí nội thất */
     toggleEditMode() {
       this.isEditMode = !this.isEditMode
       if (!this.isEditMode) {
         this.editFurnitureData = null
       }
     },
+
     /**
-     * Nhặt furniture
+     * Nhấc một món đồ lên khỏi bản đồ để thay đổi vị trí.
      */
     pickUpFurniture(instanceId: string, type: 'shelf' | 'table' | 'cashier') {
       if (type === 'shelf') {
@@ -354,8 +398,10 @@ export const useShopStore = defineStore('shop', {
       }
       return false
     },
+
     /**
-     * Warehouse furniture
+     * Thu hồi vĩnh viễn món đồ đang cầm trên tay vào Kho (Trạng thái chưa đặt).
+     * Nếu là kệ hàng, toàn bộ hàng hóa trên kệ sẽ tự động trả về kho hàng.
      */
     warehouseFurniture() {
       const inventoryStore = useInventoryStore()
@@ -364,7 +410,7 @@ export const useShopStore = defineStore('shop', {
       const data = this.editFurnitureData
       const furnitureId = data.furnitureId
 
-      // 1. Return items to shopInventory (if shelf)
+      // Trả hàng về kho shopInventory
       if (data.type === 'shelf' && data.tiers) {
         data.tiers.forEach((tier: any) => {
           tier.slots.forEach((itemId: string | null) => {
@@ -375,17 +421,16 @@ export const useShopStore = defineStore('shop', {
         })
       }
 
-      // 2. Return the furniture item itself to purchasedFurniture
+      // Trả nội thất về kho purchasedFurniture
       this.purchasedFurniture[furnitureId] = (this.purchasedFurniture[furnitureId] || 0) + 1
 
-      // 3. Cleanup
+      // Reset trạng thái
       this.editFurnitureData = null
       this.isBuildMode = false
       this.buildItemId = null
     },
-    /**
-     * Join table
-     */
+
+    /** NPC đăng ký vào một vị trí trên bàn chơi bài */
     joinTable(tableId: string, instanceId: string): number | null {
       const table = this.placedTables[tableId]
       if (!table) return null
@@ -397,70 +442,74 @@ export const useShopStore = defineStore('shop', {
       }
       return null
     },
-    /**
-     * Start match
-     */
+
+    /** Bắt đầu tính giờ trận đấu khi bàn đã đủ 2 người */
     startMatch(tableId: string) {
        const table = this.placedTables[tableId]
        if (table && table.occupants.every(o => o !== null)) {
          table.matchStartedAt = Date.now()
        }
     },
-    /**
-     * Kết thúc trận đấu tại bàn
-     * Lưu ý: Không reset occupants ngay để NPC tự giải phóng ghế khi rời đi
-     */
+
+    /** Kết thúc trận đấu (Reset thời gian nhưng giữ Occupants để NPC tự giải phóng) */
     finishMatch(tableId: string) {
        const table = this.placedTables[tableId]
        if (table) {
          table.matchStartedAt = null
-         // table.occupants remains until NPC transitions to LEAVE state
        }
     },
+
     /**
-     * Load dữ liệu từ save (phần shop)
+     * Khôi phục dữ liệu Shop từ file Save.
+     * 
+     * Quy trình xử lý bao gồm:
+     * 1. Khôi phục các mảng nội thất cơ bản.
+     * 2. Migration: Chuyển đổi cashierPosition (cũ) sang placedCashiers (mới).
+     * 3. Safety Check: Kiểm tra cấu trúc dữ liệu kệ hàng để tránh Crash nếu bản Save quá cũ.
+     * 4. Migration tọa độ: Tự động dịch chuyển đồ vật +1000px nếu chúng thuộc bản đồ cũ.
      */
     loadShop(parsed: any) {
-      if (parsed.placedShelves) {
-        // Check for legacy array format or missing properties
-        const firstShelf = Object.values(parsed.placedShelves)[0] as any
-        if (firstShelf && Array.isArray(firstShelf.tiers) && typeof firstShelf.x !== 'undefined') {
-           this.placedShelves = parsed.placedShelves
-        } else {
-           console.warn('Incompatible shelf data detected. Resetting shelves for Build Mode.')
-           this.placedShelves = {}
-        }
-      }
-      if (parsed.placedTables) {
-         this.placedTables = parsed.placedTables
-      }
-      if (parsed.purchasedFurniture) {
-        this.purchasedFurniture = parsed.purchasedFurniture
-      }
+      // 1. Khôi phục danh sách nội thất (ưu tiên dữ liệu mới nhất)
+      if (parsed.purchasedFurniture) this.purchasedFurniture = parsed.purchasedFurniture
+      if (parsed.placedTables) this.placedTables = parsed.placedTables
+      
+      // 2. Xử lý Quầy thu ngân (Migration từ cashierPosition cũ sang placedCashiers)
       if (parsed.placedCashiers) {
         this.placedCashiers = parsed.placedCashiers
       } else if (parsed.cashierPosition) {
-        // Migration for old saves (pre-refactor)
         const pos = parsed.cashierPosition
-        if (pos.x < 1000) { pos.x += 1000; pos.y += 1000; }
         this.placedCashiers = {
           'cashier_default': createCashier('cashier_default', 'cashier_desk', pos.x, pos.y)
         }
       }
 
-      // Migration for other furniture (shelves and tables)
+      // 3. Xử lý Kệ hàng & Safety Check
       if (parsed.placedShelves) {
-        Object.values(parsed.placedShelves).forEach((shelf: any) => {
-          if (shelf.x < 1000) { shelf.x += 1000; shelf.y += 1000; }
-        })
-        this.placedShelves = parsed.placedShelves
+        const shelves = Object.values(parsed.placedShelves) as any[]
+        const firstShelf = shelves[0]
+        
+        // Kiểm tra xem dữ liệu kệ có hợp lệ không (phải có mảng tiers và tọa độ)
+        if (shelves.length > 0 && (!Array.isArray(firstShelf?.tiers) || typeof firstShelf?.x === 'undefined')) {
+          console.warn('[ShopStore] Dữ liệu kệ hàng không tương thích. Đang reset để tránh lỗi.')
+          this.placedShelves = {}
+        } else {
+          this.placedShelves = parsed.placedShelves
+        }
       }
-      if (parsed.placedTables) {
-        Object.values(parsed.placedTables).forEach((table: any) => {
-          if (table.x < 1000) { table.x += 1000; table.y += 1000; }
+
+      // 4. Migration tọa độ: Dịch chuyển đồ vật nếu tọa độ cũ nằm ngoài vùng map mới (+1000px)
+      const migratePos = (items: Record<string, any>) => {
+        Object.values(items).forEach(item => {
+          if (item.x < 1000) {
+            item.x += 1000
+            item.y += 1000
+          }
         })
-        this.placedTables = parsed.placedTables
       }
+
+      if (this.placedShelves) migratePos(this.placedShelves)
+      if (this.placedTables) migratePos(this.placedTables)
+      if (this.placedCashiers) migratePos(this.placedCashiers)
 
       this.shopState = parsed.shopState ?? 'OPEN'
     }

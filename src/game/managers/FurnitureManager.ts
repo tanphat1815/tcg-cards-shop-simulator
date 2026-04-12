@@ -4,15 +4,18 @@ import { useGameStore } from '../../stores/gameStore'
 import type { ShelfData, PlayTableData, CashierData } from '../../types/gameTypes'
 
 /**
- * FurnitureManager - Quản lý hiển thị nội thất: kệ, bàn chơi, quầy thu ngân
+ * FurnitureManager - Quản lý hiển thị và vật lý toàn bộ nội thất trong Shop.
  * 
- * Chức năng chính:
- * - Hiển thị tất cả kệ (shelves) trên sân chơi
- * - Hiển thị tất cả bàn chơi (tables) trên sân chơi
- * - Hiển thị tất cả quầy thu ngân (cashiers) trên sân chơi
- * - Cập nhật thông tin hiển thị (số items, trạng thái bàn v.v.)
- * - Quản lý thêm/xóa furniture
- * - Cung cấp physics groups cho collision detection
+ * Các trách nhiệm chính:
+ * - Kệ hàng (Shelves): Render model kệ, text label hiển thị số lượng hàng hóa.
+ * - Bàn chơi bài (Tables): Render khu vực bàn chơi, text label hiển thị trạng thái đấu bài (Playing/Waiting).
+ * - Quầy thu ngân (Cashiers): Render quầy thu ngân chính của shop.
+ * - Vật lý: Quản lý các Physics Static Groups để Player và NPC có thể va chạm (Collision).
+ * - Đồng bộ: Cập nhật Visuals (Text/Status) liên tục dựa trên trạng thái trong Store.
+ * 
+ * Cấu trúc phân lớp (Depth):
+ * - FURNITURE (10): Dành cho Sprite vật thể.
+ * - UI (20): Dành cho Text Label hiển thị phía trên vật thể.
  * 
  * Sử dụng Dependency Injection:
  * - Scene được truyền vào constructor để tạo sprites và graphics
@@ -31,9 +34,13 @@ import type { ShelfData, PlayTableData, CashierData } from '../../types/gameType
  */
 export class FurnitureManager {
   private scene: Phaser.Scene
+  
+  // Physics Groups - Dạng Static vì nội thất không di chuyển sau khi đặt
   public shelvesGroup!: Phaser.Physics.Arcade.StaticGroup
   public tablesGroup!: Phaser.Physics.Arcade.StaticGroup
   public cashierGroup!: Phaser.Physics.Arcade.StaticGroup
+  
+  /** Lưu trữ các đối tượng Text để cập nhật nội dung hiệu quả mà không cần tạo mới */
   private shelfTexts: Record<string, Phaser.GameObjects.Text> = {}
   private tableVisuals: Record<string, { rect: Phaser.GameObjects.Rectangle, label: Phaser.GameObjects.Text }> = {}
 
@@ -43,7 +50,8 @@ export class FurnitureManager {
   }
 
   /**
-   * Khởi tạo các physics groups
+   * Khởi tạo các nhóm Vật lý tĩnh. 
+   * Được gọi trong Constructor để đảm bảo các Group luôn sẵn sàng trước khi nạp đồ nội thất.
    */
   private initializeGroups() {
     this.shelvesGroup = this.scene.physics.add.staticGroup()
@@ -52,15 +60,15 @@ export class FurnitureManager {
   }
 
   /**
-   * Khởi tạo toàn bộ furniture từ gameStore
-   * Gọi sau khi environment đã sẵn sàng
+   * Khởi tạo toàn bộ nội thất từ GameStore.
+   * Nên được gọi sau khi EnvironmentManager đã vẽ xong sàn và tường.
    */
   initializeFurniture() {
     this.displayAllFurniture()
   }
 
   /**
-   * Hiển thị tất cả furniture từ gameStore
+   * Quét toàn bộ Store và render lại tất cả vật dụng hiện có.
    * Thủ tục:
    * 1. Xóa tất cả furniture hiện tại
    * 2. Đọc dữ liệu từ gameStore (placedShelves, placedTables, placedCashiers)
@@ -70,27 +78,28 @@ export class FurnitureManager {
   displayAllFurniture() {
     const gameStore = useGameStore()
 
-    // Clear existing
+    // Xóa sạch các đối tượng cũ trước khi vẽ lại
     this.clearAllFurniture()
 
-    // Display shelves
+    // 1. Render Kệ hàng
     Object.values(gameStore.placedShelves).forEach(shelf => {
       this.displayShelf(shelf)
     })
 
-    // Display tables
+    // 2. Render Bàn chơi
     Object.values(gameStore.placedTables).forEach(table => {
       this.displayTable(table)
     })
 
-    // Display cashiers
+    // 3. Render Quầy thu ngân
     Object.values(gameStore.placedCashiers).forEach(cashier => {
       this.displayCashier(cashier)
     })
   }
 
   /**
-   * Hiển thị một kệ hàng
+   * Render một Kệ hàng cụ thể.
+   * Kèm theo Text Label hiển thị tổng số hàng hóa đang có trên tất cả các tầng.
    * - Tạo sprite tại vị trí x, y
    * - Thêm text label hiển thị số lượng items
    * - Thêm vào shelvesGroup cho collision detection
@@ -102,30 +111,35 @@ export class FurnitureManager {
     sprite.setData('type', 'shelf')
     sprite.setDepth(DEPTH.FURNITURE) // Lớp 10
 
-    // Hiển thị thông tin kệ
+    // Khởi tạo Text Label hiển thị thông tin hàng hóa
     const text = this.scene.add.text(shelf.x, shelf.y - 60, this.getShelfInfo(shelf), {
       fontSize: '12px',
       color: '#000',
       backgroundColor: '#fff',
       padding: { x: 4, y: 2 }
     }).setDepth(DEPTH.UI)
+    
     this.shelfTexts[shelf.id] = text
   }
 
   /**
-   * Hiển thị một bàn chơi
-   * - Tạo sprite (hiện tại dùng sprite cashier tạm)
-   * - Tạo rectangle và label hiển thị trạng thái (số người chơi/trạng thái game)
-   * - Lưu trữ visual objects để update sau
+   * Render một Bàn chơi bài.
+   * Bao gồm một Rectangle đại diện cho mặt bàn và Label hiển thị trạng thái người chơi.
+   * - Tạo sprite giả tại vị trí x, y
+   * - Vẽ rectangle cho mặt bàn
+   * - Thêm text label hiển thị trạng thái
+   * - Thêm vào tablesGroup cho collision detection
    * @param table Dữ liệu bàn từ gameStore
    */
   public displayTable(table: PlayTableData) {
-    const sprite = this.tablesGroup.create(table.x, table.y, 'cashier') // Sử dụng sprite cashier tạm thời
+    // Sprite giả để phục vụ va chạm vật lý
+    const sprite = this.tablesGroup.create(table.x, table.y, 'cashier') 
     sprite.setData('id', table.id)
     sprite.setData('type', 'table')
-    sprite.setDepth(DEPTH.TABLE) // Lớp 10
+    sprite.setDepth(DEPTH.TABLE)
+    sprite.setVisible(false) // Ẩn sprite giả, ta sẽ vẽ bàn bằng Graphics/Rectangle
 
-    // Hiển thị trạng thái bàn
+    // Vẽ hình ảnh bàn
     const rect = this.scene.add.rectangle(table.x, table.y, 80, 40, 0x8B4513).setDepth(DEPTH.FURNITURE)
     const label = this.scene.add.text(table.x, table.y - 30, this.getTableInfo(table), {
       fontSize: '10px',
@@ -136,24 +150,20 @@ export class FurnitureManager {
   }
 
   /**
-   * Hiển thị một quầy thu ngân
+   * Render Quầy thu ngân.
    * - Tạo sprite tại vị trí x, y
    * - Thêm vào cashierGroup cho collision detection
-   * @param cashier Dữ liệu quầy từ gameStore
-   */
-  /**
-   * Hiển thị một quầy thu ngân
    * @param cashier Dữ liệu quầy từ gameStore
    */
   public displayCashier(cashier: CashierData) {
     const sprite = this.cashierGroup.create(cashier.x, cashier.y, 'cashier')
     sprite.setData('id', cashier.id)
     sprite.setData('type', 'cashier')
-    sprite.setDepth(DEPTH.CASHIER) // Lớp 10
+    sprite.setDepth(DEPTH.CASHIER)
   }
 
   /**
-   * Phương thức proxy để thêm furniture bất kỳ vào scene
+   * Phương thức tiện ích để thêm nhanh một món nội thất vào Scene dựa trên cấu trúc dữ liệu chung.
    */
   public addFurnitureToScene(data: any) {
     if (data.furnitureId === 'play_table' || data.type === 'table') {
@@ -166,36 +176,37 @@ export class FurnitureManager {
   }
 
   /**
-   * Lấy thông tin hiển thị của kệ
+   * Tổng hợp chuỗi thông tin cho label của kệ hàng.
    */
   private getShelfInfo(shelf: ShelfData): string {
     const totalItems = shelf.tiers.reduce((sum, tier) => sum + tier.slots.filter(slot => slot !== null).length, 0)
-    return `Kệ: ${totalItems} items`
+    return `Kệ: ${totalItems} món`
   }
 
   /**
-   * Lấy thông tin hiển thị của bàn
+   * Tổng hợp chuỗi thông tin cho label của bàn chơi.
    */
   private getTableInfo(table: PlayTableData): string {
     const occupiedSeats = table.occupants.filter(o => o !== null).length
-    const status = table.matchStartedAt ? 'Playing' : `${occupiedSeats}/2 players`
+    const status = table.matchStartedAt ? 'Đang chơi...' : `${occupiedSeats}/2 Người chơi`
     return status
   }
 
   /**
-   * Cập nhật hiển thị toàn bộ furniture khi dữ liệu thay đổi
+   * Cập nhật Visuals cho toàn bộ nội thất. 
+   * Được gọi trong vòng lặp Update của MainScene để đồng bộ hóa các con số hiển thị.
    */
   updateFurnitureVisuals() {
     const gameStore = useGameStore()
 
-    // Update shelf texts
+    // 1. Cập nhật Text trên các kệ
     Object.values(gameStore.placedShelves).forEach(shelf => {
       if (this.shelfTexts[shelf.id]) {
         this.shelfTexts[shelf.id].setText(this.getShelfInfo(shelf))
       }
     })
 
-    // Update table visuals
+    // 2. Cập nhật Status trên các bàn
     Object.values(gameStore.placedTables).forEach(table => {
       if (this.tableVisuals[table.id]) {
         const { label } = this.tableVisuals[table.id]
@@ -205,7 +216,7 @@ export class FurnitureManager {
   }
 
   /**
-   * Xóa một furniture khỏi hiển thị
+   * Xóa một món nội thất khỏi Scene khi bị User thu hồi (Pick up).
    * - Tìm sprite theo id và type
    * - Destroy sprite và các visual objects liên quan (texts, rects)
    * - Cleanup từ bộ nhớ (đặc biệt là shelfTexts, tableVisuals)
@@ -235,7 +246,7 @@ export class FurnitureManager {
   }
 
   /**
-   * Xóa tất cả furniture khỏi hiển thị
+   * Dọn dẹp sạch sẽ toàn bộ đối tượng GameObjects và Text trước khi vẽ lại hoặc chuyển Scene.
    * - Clear tất cả sprites từ 3 physics groups
    * - Destroy tất cả text labels và visual rectangles
    * - Reset bộ nhớ (shelfTexts, tableVisuals)
@@ -257,7 +268,7 @@ export class FurnitureManager {
   }
 
   /**
-   * Lấy physics groups để collision
+   * Trả về các Physics Groups cấp độ thấp cho hệ thống vật lý Phaser (Colliders).
    */
   getPhysicsGroups() {
     return {
@@ -268,8 +279,8 @@ export class FurnitureManager {
   }
 
   /**
-   * Cleanup khi destroy scene
-   * - Gọi clearAllFurniture() để xóa tất cả objects
+   * Giải phóng tài nguyên khi Manager không còn sử dụng.
+    * - Gọi clearAllFurniture() để xóa tất cả objects
    * - Được gọi từ MainScene.shutdown hoặc cleanup
    */
   destroy() {

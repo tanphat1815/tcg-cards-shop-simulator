@@ -5,20 +5,35 @@ import { XP_REWARDS } from '../../config/leveling'
 import { useStatsStore } from './statsStore'
 
 /**
- * Store quản lý kho hàng và bộ sưu tập cá nhân
+ * InventoryStore - Quản lý dòng chảy hàng hóa và bộ sưu tập thẻ bài.
+ * 
+ * Các trách nhiệm chính:
+ * - Kho hàng (Shop Inventory): Lưu trữ các vật phẩm thương mại (Box, Pack) chờ xếp lên kệ.
+ * - Sưu tập (Personal Binder): Lưu trữ các thẻ bài cá nhân mà người chơi sở hữu sau khi xé pack.
+ * - Gacha Mechanics: Xử lý logic xé thẻ (tearPack) với tỷ lệ hiếm (Rarity) khác nhau.
+ * - Chuyển đổi hàng hóa: Logic khui thùng (unboxItem) để chia nhỏ thùng hàng thành các pack lẻ.
  */
 export const useInventoryStore = defineStore('inventory', {
   state: () => ({
-    shopInventory: {} as Record<string, number>, // itemId -> quantity
-    personalBinder: {} as Record<string, number>, // cardId -> quantity
-    allCards: cardsData as any[], // Sẽ import CardData từ types
+    /** Hàng hóa thương mại có trong kho: itemId -> số lượng */
+    shopInventory: {} as Record<string, number>, 
+    /** Bộ sưu tập thẻ bài cá nhân: cardId -> số lượng */
+    personalBinder: {} as Record<string, number>, 
+    /** Toàn bộ dữ liệu thẻ bài có trong Game */
+    allCards: cardsData as any[], 
+    /** Cấu hình các loại mặt hàng có thể nhập về */
     shopItems: STOCK_ITEMS,
+    
+    // Trạng thái Gacha UI
     isOpeningPack: false,
-    currentPack: [] as any[], // CardData[]
+    /** Danh sách thẻ bài vừa nhận được từ việc xé pack */
+    currentPack: [] as any[], 
   }),
   actions: {
     /**
-     * Mua hàng vào kho
+     * Nhập hàng vào kho của shop.
+     * @param itemId ID mặt hàng cần mua.
+     * @param amount Số lượng nhập về.
      */
     buyStock(itemId: string, amount: number = 1) {
       const statsStore = useStatsStore()
@@ -33,8 +48,10 @@ export const useInventoryStore = defineStore('inventory', {
       this.shopInventory[itemId] += amount
       return true
     },
+
     /**
-     * Mở hộp
+     * Khui một thùng hàng (Box) để lấy các gói nhỏ (Pack) bên trong.
+     * Thường dùng khi người chơi muốn xé pack thẻ bài lẻ từ một thùng hàng vừa nhập.
      */
     unboxItem(boxId: string) {
       const box = this.shopItems[boxId]
@@ -51,14 +68,19 @@ export const useInventoryStore = defineStore('inventory', {
          this.shopInventory[innerId] += innerAmount
       }
     },
+
     /**
-     * Xé pack
+     * Logic "Xé Pack" (Gacha): 
+     * - Trừ 1 pack từ kho hàng.
+     * - Tính toán ngẫu nhiên 8 lá bài dựa trên trọng số hiếm (Weights) của từng loại Pack.
+     * - Thêm bài vào Binder cá nhân và thưởng XP cho người chơi.
      */
     tearPack(packId: string) {
       const statsStore = useStatsStore()
       if (!this.shopInventory[packId] || this.shopInventory[packId] <= 0) return
 
-      let weights = { Common: 65, Uncommon: 30, Rare: 5 } // pack_basic
+      // Cấu hình tỷ lệ rơi thẻ dựa trên loại pack
+      let weights = { Common: 65, Uncommon: 30, Rare: 5 } // Mặc định: Pack Basic
       if (packId === 'pack_rare') {
         weights = { Common: 15, Uncommon: 70, Rare: 15 }
       } else if (packId === 'silver_pack') {
@@ -71,13 +93,16 @@ export const useInventoryStore = defineStore('inventory', {
       if (this.shopInventory[packId] === 0) delete this.shopInventory[packId]
 
       const pulledCards: any[] = []
+      // Mỗi pack luôn có 8 lá bài
       for (let i = 0; i < 8; i++) {
         const rand = Math.random() * 100
         let targetRarity = 'Common'
+        
+        // Xác định độ hiếm dựa trên con số ngẫu nhiên
         if (rand <= weights.Rare) {
-           targetRarity = 'Rare'
+            targetRarity = 'Rare'
         } else if (rand <= weights.Rare + weights.Uncommon) {
-           targetRarity = 'Uncommon'
+            targetRarity = 'Uncommon'
         }
 
         const possibleCards = this.allCards.filter((c: any) => c.rarity === targetRarity)
@@ -86,29 +111,32 @@ export const useInventoryStore = defineStore('inventory', {
 
         pulledCards.push(randomCard)
 
-        // Add single cards directly to personal binder
+        // Cập nhật Binder cá nhân
         if (!this.personalBinder[randomCard.id]) {
           this.personalBinder[randomCard.id] = 0
         }
         this.personalBinder[randomCard.id]++
 
-        // XP Reward from opening
+        // Thưởng XP dựa trên độ hiếm của thẻ vừa xé được
         if (randomCard.rarity === 'Rare') statsStore.gainExp(XP_REWARDS.OPEN_PACK_RARE)
         else if (randomCard.rarity === 'Uncommon') statsStore.gainExp(XP_REWARDS.OPEN_PACK_UNCOMMON)
         else statsStore.gainExp(XP_REWARDS.OPEN_PACK_COMMON)
       }
+      
       this.currentPack = pulledCards
       this.isOpeningPack = true
     },
+
     /**
-     * Đóng overlay mở pack
+     * Dọn dẹp trạng thái sau khi người chơi xem xong các lá bài vừa mở.
      */
     closePackOpening() {
       this.isOpeningPack = false
       this.currentPack = []
     },
+
     /**
-     * Load dữ liệu từ save (phần inventory)
+     * Khôi phục kho hàng và bộ sưu tập từ bản lưu.
      */
     loadInventory(parsed: any) {
       this.shopInventory = parsed.shopInventory ?? {}

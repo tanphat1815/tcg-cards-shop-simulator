@@ -15,20 +15,30 @@ import { NPCManager } from './managers/NPCManager'
 import { StaffManager } from './managers/StaffManager'
 
 /**
- * MainScene - Orchestrator chính của game Phaser.
- * Kết nối các Managers và xử lý logic tương tác của người chơi.
+ * MainScene - Trái tim điều khiển (Orchestrator) của trò chơi trong Phaser.
+ * 
+ * Vai trò:
+ * - Khởi tạo và kết nối tất cả các Managers (Environment, Furniture, NPC, Staff).
+ * - Quản lý vòng đời của Game Objects chính (Player, Camera, Graphics).
+ * - Xử lý tương tác Input từ người dùng (Di chuyển, Tương tác E, Xây dựng).
+ * - Đăng ký lắng nghe sự thay đổi từ Pinia Store để đồng bộ hóa Logic Web và Game Engine.
+ * 
+ * Cấu trúc chính:
+ * 1. preload(): Tải tài nguyên (Images, Spritesheets).
+ * 2. create(): Khởi tạo thế giới, Managers, Vật lý và Camera.
+ * 3. update(): Vòng lặp game xử lý input và cập nhật trạng thái các Managers.
  */
 export default class MainScene extends Phaser.Scene {
-  // Game Objects
+  // Đối tượng người chơi chính
   public player!: Phaser.Physics.Arcade.Sprite
   
-  // Managers
+  // Danh sách các Managers quản lý hệ thống con
   public environmentManager!: EnvironmentManager
   public furnitureManager!: FurnitureManager
   public npcManager!: NPCManager
   public staffManager!: StaffManager
 
-  // Input & UI
+  // Trạng thái điều khiển và hiển thị tạm thời (Ghost) khi xây dựng
   private keyE!: Phaser.Input.Keyboard.Key
   private ghostSprite: Phaser.GameObjects.Sprite | null = null
   private ghostRectangle: Phaser.GameObjects.Rectangle | null = null
@@ -37,7 +47,7 @@ export default class MainScene extends Phaser.Scene {
   private staffSprites: Map<string, Phaser.Physics.Arcade.Sprite> = new Map()
   private lastAutoCheckoutTime: number = 0
   
-  // Graphics Layers
+  // Các lớp đồ họa (Graphics Layers) dùng để vẽ hiệu ứng đặc biệt hoặc Preview
   public previewGraphics!: Phaser.GameObjects.Graphics
   public placementGraphics!: Phaser.GameObjects.Graphics
   private editOverlay!: Phaser.GameObjects.Graphics
@@ -52,7 +62,7 @@ export default class MainScene extends Phaser.Scene {
     p: Phaser.Input.Keyboard.Key
   }
 
-  // Camera Drag vars
+  // Các biến phục vụ tính năng kéo Camera (Drag to Pan)
   private isDraggingCamera: boolean = false
   private dragStartX: number = 0
   private dragStartY: number = 0
@@ -63,6 +73,9 @@ export default class MainScene extends Phaser.Scene {
     super({ key: 'MainScene' })
   }
 
+  /**
+   * Tải các tài nguyên hình ảnh cần thiết trước khi vào game.
+   */
   preload() {
     this.load.spritesheet('player', playerImg, { frameWidth: 32, frameHeight: 32 })
     this.load.spritesheet('npc', npcImg, { frameWidth: 32, frameHeight: 32 })
@@ -70,62 +83,64 @@ export default class MainScene extends Phaser.Scene {
     this.load.image('cashier', cashierImg)
   }
 
+  /**
+   * Khởi tạo thế giới game. Thứ tự thực thi ở đây rất quan trọng.
+   */
   create() {
     const gameStore = useGameStore()
 
-    // 1. Khởi tạo Layers đồ họa
+    // 1. Khởi tạo Layers đồ họa trước để các Managers có thể vẽ lên
     this.previewGraphics = this.add.graphics().setDepth(DEPTH.PREVIEW)
     this.placementGraphics = this.add.graphics().setDepth(DEPTH.PLACEMENT_VISUALIZER)
     this.editOverlay = this.add.graphics().setDepth(DEPTH.EDIT_OVERLAY).setScrollFactor(0)
     
-    // 2. Khởi tạo Managers
+    // 2. Khởi tạo các Managers (Dependency Injection)
     this.environmentManager = new EnvironmentManager(this)
     this.furnitureManager = new FurnitureManager(this)
     this.npcManager = new NPCManager(this, this.environmentManager)
     this.staffManager = new StaffManager(this)
 
-    // 3. UI & Animations
+    // 3. Thiết lập Visuals (Animations & UI tĩnh)
     this.setupAnimations()
     this.setupUI()
 
-    // 4. Vật lý & Thế giới
+    // 4. Thiết lập vật lý và môi trường khởi đầu
     this.physics.world.setBounds(0, 0, 3000, 3000)
     this.environmentManager.initializeEnvironment()
     this.furnitureManager.initializeFurniture()
 
-    // 5. Player
+    // 5. Khởi tạo Nhân vật người chơi (Đặt tại cửa shop)
     const doorPos = this.environmentManager.getDoorLocation()
     this.player = this.physics.add.sprite(doorPos.x, doorPos.y - 150, 'player')
     this.player.setCollideWorldBounds(true).setDepth(DEPTH.PLAYER)
 
-    // 6. Va chạm cho Player
+    // 6. Cấu hình va chạm (Collisions)
     this.physics.add.collider(this.player, this.furnitureManager.shelvesGroup)
     this.physics.add.collider(this.player, this.furnitureManager.tablesGroup)
     this.physics.add.collider(this.player, this.furnitureManager.cashierGroup)
     this.physics.add.collider(this.player, this.environmentManager.wallsGroup)
 
-    // 7. Cấu hình phím
+    // 7. Cấu hình Input (Keyboard/Mouse)
     this.setupInputs()
 
-    // 8. Camera
+    // 8. Cấu hình Camera (Follow Player)
     this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
     this.cameras.main.setZoom(1)
     
-    // 9. Lắng nghe Store changes
+    // 9. Đồng bộ hóa dữ liệu (Subscriptions)
     this.setupStoreSubscriptions(gameStore)
-
-    // Khởi tạo nhân viên ban đầu
     this.staffManager.syncWorkers()
 
-    // 10. Khởi động vòng lặp spawn NPC
-    this.time.addEvent({
-      delay: 3000,
-      callback: () => this.npcManager.spawnNPC(),
-      loop: true
-    })
+    // 10. Kích hoạt các vòng lặp AI và Thời gian
+    this.npcManager.initializeNPCs()
 
-    // 11. Khởi động vòng lặp thời gian (Tick mỗi giây thực = 1 phút game)
-    // Chỉ tick khi shop đang MỞ CỬA
+    // this.time.addEvent({
+    //   delay: 3000,
+    //   callback: () => this.npcManager.spawnNPC(),
+    //   loop: true
+    // })
+
+    // Vòng lặp thời gian cốt lõi: 1 giây thực = 1 phút game
     this.time.addEvent({
       delay: 1000,
       callback: () => {
@@ -136,13 +151,14 @@ export default class MainScene extends Phaser.Scene {
       loop: true
     })
 
-    // 12. Thiết lập kéo Camera (Drag to Pan)
+    // 11. Các tính năng mở rộng (Kéo camera, vẽ shop)
     this.setupCameraDrag()
-
-    // Khởi tạo môi trường lần đầu (Vẽ shop)
     this.environmentManager.refreshEnvironment()
   }
 
+  /**
+   * Đăng ký các Frame Animations cho Player và NPC
+   */
   private setupAnimations() {
     const anims = this.anims
     if (!anims.exists('player-down')) {
@@ -158,6 +174,9 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Khởi tạo các phần tử UI overlay trong Phaser (như text báo chế độ Setup)
+   */
   private setupUI() {
     this.editText = this.add.text(this.cameras.main.width / 2, 80, 'SHOP SETUP MODE', { 
       fontSize: '32px', 
@@ -168,6 +187,9 @@ export default class MainScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(DEPTH.UI).setScrollFactor(0).setVisible(false)
   }
 
+  /**
+   * Gán các phím điều khiển từ bàn phím.
+   */
   private setupInputs() {
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.addKeys({
@@ -180,6 +202,7 @@ export default class MainScene extends Phaser.Scene {
       
       this.keyE = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E)
       
+      // Phím X để bật/tắt nhanh chế độ chỉnh sửa nội thất
       this.input.keyboard.on('keydown-X', () => {
         useGameStore().toggleEditMode()
       })
@@ -188,13 +211,14 @@ export default class MainScene extends Phaser.Scene {
 
   /**
    * Thiết lập tính năng kéo Camera bằng chuột phải hoặc chuột giữa.
+   * Giúp người chơi quan sát shop rộng khi không di chuyển.
    */
   private setupCameraDrag() {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       // Chuột phải (2) hoặc chuột giữa (1)
       if (pointer.button === 1 || pointer.button === 2) {
         this.isDraggingCamera = true
-        this.cameras.main.stopFollow() // Dừng follow để kéo tự do
+        this.cameras.main.stopFollow() // Tạm dừng bám theo Player
         
         this.dragStartX = pointer.x
         this.dragStartY = pointer.y
@@ -207,7 +231,6 @@ export default class MainScene extends Phaser.Scene {
       if (this.isDraggingCamera) {
         const dx = pointer.x - this.dragStartX
         const dy = pointer.y - this.dragStartY
-        
         this.cameras.main.scrollX = this.camStartX - dx
         this.cameras.main.scrollY = this.camStartY - dy
       }
@@ -216,8 +239,7 @@ export default class MainScene extends Phaser.Scene {
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       if (pointer.button === 1 || pointer.button === 2) {
         this.isDraggingCamera = false
-        
-        // (Tùy chọn) Để camera quay lại follow player sau 2s không tương tác
+        // Quay trở lại bám theo Player nếu Player có di chuyển
         this.time.delayedCall(2000, () => {
           if (!this.isDraggingCamera && (this.player.body!.velocity.x !== 0 || this.player.body!.velocity.y !== 0)) {
             this.cameras.main.startFollow(this.player, true, 0.05, 0.05)
@@ -226,10 +248,12 @@ export default class MainScene extends Phaser.Scene {
       }
     })
 
-    // Ngăn chặn menu chuột phải trình duyệt
     this.input.mouse?.disableContextMenu()
   }
 
+  /**
+   * Đăng ký lắng nghe các Store (Pinia) thay đổi. 
+   */
   private setupStoreSubscriptions(gameStore: any) {
     const statsStore = useStatsStore()
     const shopStore = useShopStore()
@@ -237,20 +261,18 @@ export default class MainScene extends Phaser.Scene {
     let lastExpansionLevel = statsStore.expansionLevel
     let lastSettings = JSON.stringify(statsStore.settings)
 
-    // Lắng nghe statsStore (Cài đặt, Level)
+    // Theo dõi Cài đặt và Mở rộng diện tích
     statsStore.$subscribe((_mutation, state) => {
       const currentSettings = JSON.stringify(state.settings)
       if (state.expansionLevel !== lastExpansionLevel || currentSettings !== lastSettings) {
-        console.log("DEBUG: statsStore changed, refreshing environment")
         lastExpansionLevel = state.expansionLevel
         lastSettings = currentSettings
         this.environmentManager.refreshEnvironment()
       }
     })
 
-    // Lắng nghe staffStore
+    // Theo dõi thay đổi nhân sự (Thuê/Sa thải nhân viên)
     useStaffStore().$subscribe(() => {
-      console.log("DEBUG: staffStore changed, syncing workers")
       this.staffManager.syncWorkers()
     })
 
@@ -262,6 +284,7 @@ export default class MainScene extends Phaser.Scene {
        }
     })
 
+    // Theo dõi trạng thái kết thúc ngày (Xóa sạch NPC khách)
     gameStore.$subscribe((_mutation: any, state: any) => {
       if (state.showEndDayModal) {
         this.npcManager.cleanupAllNPCs()
@@ -269,58 +292,67 @@ export default class MainScene extends Phaser.Scene {
     })
   }
 
+  /**
+   * Vòng lặp Game chính (60fps).
+   */
   update(time: number) {
     if (!this.cursors || !this.player.body || !this.keyE) return
 
     const store = useGameStore()
 
-    // 1. Cập nhật Managers
+    // 1. Cập nhật logic các Managers
     this.npcManager.update()
     this.furnitureManager.updateFurnitureVisuals()
     this.staffManager.update(time)
 
-    // 2. Tương tác phím E
+    // 2. Xử lý tương tác nhấn phím E (Thanh toán/Quản lý kệ)
     if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
       this.handlePlayerInteraction(store)
     }
 
-    // 3. Auto Checkout
+    // 3. Xử lý nhân viên hỗ trợ thanh toán (Auto Checkout)
     this.handleAutoCheckout(time)
 
-    // 4. Build & Edit Mode
+    // 4. Phân luồng điều khiển: Chế độ Xây dựng/Chỉnh sửa vs Chế độ Di chuyển
     if (store.isBuildMode || store.isEditMode) {
       this.handleBuildMode(store)
-      this.player.setVelocity(0)
+      this.player.setVelocity(0) // Khóa người chơi khi đang đặt đồ
       this.player.anims.stop()
     } else {
       this.handlePlayerMovement()
       this.clearGhostIfNecessary()
     }
 
-    // 5. Edit Overlay Visual
+    // 5. Cập nhật hiệu ứng lớp phủ Border khi ở chế độ chỉnh sửa
     this.updateEditOverlay(store)
 
-    // 6. Diagnostics
+    // 6. Phím tắt Diagnostic (Chạy báo cáo hệ thống khi nhấn P)
     if (Phaser.Input.Keyboard.JustDown(this.cursors.p)) {
       this.runDiagnostics()
     }
   }
 
+  /**
+   * Tương tác của người chơi với vật thể gần nhất khi nhấn E.
+   */
   private handlePlayerInteraction(store: any) {
-    // Check Cashier
+    // Ưu tiên 1: Thanh toán tại quầy
     let nearestCashier = this.getNearestFromGroup(this.furnitureManager.cashierGroup, 80)
     if (nearestCashier && store.waitingCustomers > 0) {
       store.serveCustomer()
       return
     }
 
-    // Check Shelf
+    // Ưu tiên 2: Quản lý hàng hóa trên kệ
     let nearestShelf = this.getNearestFromGroup(this.furnitureManager.shelvesGroup, 70)
     if (nearestShelf) {
       store.openShelfManagement(nearestShelf.getData('id'))
     }
   }
 
+  /**
+   * Tìm kiếm vật thể gần nhất trong một Physics Group.
+   */
   private getNearestFromGroup(group: Phaser.Physics.Arcade.StaticGroup, maxDist: number): Phaser.Physics.Arcade.Sprite | null {
     let nearest: Phaser.Physics.Arcade.Sprite | null = null
     let minDist = maxDist
@@ -335,6 +367,9 @@ export default class MainScene extends Phaser.Scene {
     return nearest
   }
 
+  /**
+   * Xử lý di chuyển vật lý của Player.
+   */
   private handlePlayerMovement() {
     this.player.setVelocity(0)
     const speed = 160
@@ -367,6 +402,9 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Tự động thanh toán nếu có nhân viên được phân công Duty 'CASHIER'.
+   */
   private handleAutoCheckout(time: number) {
     const store = useGameStore()
     if (store.waitingCustomers <= 0) return
@@ -390,10 +428,13 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Xử lý luồng Xây dựng & Chỉnh sửa nội thất.
+   */
   private handleBuildMode(store: any) {
     const pointer = this.input.activePointer
 
-    // Edit logic (Pick up)
+    // 1. Logic Chỉnh sửa (Cầm đồ vật hiện có lên)
     if (store.isEditMode && !store.isBuildMode) {
       if (pointer.isDown && this.time.now > this.lastPlacementTime + 200) {
         this.handleFurniturePickup(pointer, store)
@@ -403,26 +444,29 @@ export default class MainScene extends Phaser.Scene {
 
     if (!store.isBuildMode) return
 
-    // Placement logic (Ghost)
+    // 2. Logic Đặt đồ mới (Hiển thị Ghost Preview)
     this.updateGhostPosition(pointer, store)
     this.drawPlacementVisualizer()
 
-    // Validation
+    // Kiểm tra tính hợp lệ (có bị chạm tường hay đè lên đồ khác không)
     this.isPlacementValid = this.validatePlacement(pointer)
     this.updateGhostVisual()
 
-    // Place item
+    // Thực hiện đặt đồ khi nhấn chuột
     if (pointer.isDown && this.isPlacementValid && this.time.now > this.lastPlacementTime + 300) {
        this.placeFurniture(pointer, store)
     }
 
-    // Cancel logic
+    // Thoát chế độ khi nhấn chuột phải hoặc phím ESC
     const escKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
     if (Phaser.Input.Keyboard.JustDown(escKey!) || pointer.rightButtonDown()) {
       this.cancelPlacement(store)
     }
   }
 
+  /**
+   * Thu hồi nội thất đang đặt trong shop về kho.
+   */
   private handleFurniturePickup(pointer: Phaser.Input.Pointer, store: any) {
     let found = false
     const checkGroups = [
@@ -450,6 +494,9 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Cập nhật vị trí bóng mờ (Ghost) của vật dụng đang định đặt.
+   */
   private updateGhostPosition(pointer: Phaser.Input.Pointer, store: any) {
     if (!this.ghostSprite && !this.ghostRectangle) {
       const isTable = store.buildItemId === 'play_table' || store.editFurnitureData?.type === 'table'
@@ -475,17 +522,23 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Kiểm tra điều kiện đặt đồ:
+   * - Phải nằm trong diện tích shop.
+   * - Không được đè lên đồ nội thất khác hoặc tường.
+   * - Không được đè lên vị trí người chơi đang đứng.
+   */
   private validatePlacement(pointer: Phaser.Input.Pointer): boolean {
     const pad = 30
     const bounds = this.environmentManager.getShopBounds()
     
-    // 1. Check Shop Bounds
+    // Kiểm tra nằm ngoài Shop
     if (pointer.worldX < bounds.x + pad || pointer.worldX > bounds.x + bounds.w - pad ||
         pointer.worldY < bounds.y + pad || pointer.worldY > bounds.y + bounds.h - pad) {
       return false
     }
 
-    // 2. Check Collisions
+    // Kiểm tra và chạm với các vật thể thuộc Static Groups
     const w = this.ghostRectangle ? 60 : 40
     const h = this.ghostRectangle ? 40 : 40
     const rect = new Phaser.Geom.Rectangle(pointer.worldX - w/2, pointer.worldY - h/2, w, h)
@@ -498,21 +551,34 @@ export default class MainScene extends Phaser.Scene {
       this.furnitureManager.tablesGroup
     ]
 
+    // for (const group of obstacleGroups) {
+    //   group.getChildren().forEach(child => {
+    //     const sprite = child as any
+    //     if (useGameStore().editFurnitureData?.id === sprite.getData('id')) return
+        
+    //     const b = (child instanceof Phaser.Physics.Arcade.Sprite && sprite.texture.key === '') ? 
+    //               new Phaser.Geom.Rectangle(sprite.x - 30, sprite.y - 20, 60, 40) : 
+    //               sprite.getBounds()
+        
+    //     if (Phaser.Geom.Intersects.RectangleToRectangle(rect, b)) collided = true
+    //   })
+    //   if (collided) return false
+    // }
+
     for (const group of obstacleGroups) {
-      group.getChildren().forEach(child => {
+      const children = group.getChildren()
+      for (const child of children) {
         const sprite = child as any
-        if (useGameStore().editFurnitureData?.id === sprite.getData('id')) return
+        if (useGameStore().editFurnitureData?.id === sprite.getData('id')) continue
         
         const b = (child instanceof Phaser.Physics.Arcade.Sprite && sprite.texture.key === '') ? 
-                  new Phaser.Geom.Rectangle(sprite.x - 30, sprite.y - 20, 60, 40) : 
-                  sprite.getBounds()
+                  new Phaser.Geom.Rectangle(sprite.x - 30, sprite.y - 20, 60, 40) : sprite.getBounds()
         
-        if (Phaser.Geom.Intersects.RectangleToRectangle(rect, b)) collided = true
-      })
-      if (collided) return false
+        if (Phaser.Geom.Intersects.RectangleToRectangle(rect, b)) return false
+      }
     }
 
-    // 3. Distance to Player
+    // Không được đặt đè lên người chơi
     if (Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, this.player.x, this.player.y) < 50) return false
 
     return true
@@ -559,7 +625,7 @@ export default class MainScene extends Phaser.Scene {
   }
 
   /**
-   * Draws the visualizer for placement obstacles.
+   * Vẽ vùng báo hiệu vật cản (vùng đỏ) khi ở chế độ đặt đồ.
    */
   private drawPlacementVisualizer() {
     this.placementGraphics.clear()
@@ -583,6 +649,9 @@ export default class MainScene extends Phaser.Scene {
     })
   }
 
+  /**
+   * Cập nhật lớp phủ (Overlay) thông báo người chơi đang ở chế độ Chỉnh sửa nội thất.
+   */
   private updateEditOverlay(store: any) {
     this.editOverlay.clear()
     if (store.isEditMode) {
@@ -594,6 +663,10 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Chạy báo cáo tình trạng hệ thống Game hiện tại (Diagnostic). 
+   * Hữu ích cho việc Debug.
+   */
   private runDiagnostics() {
     const store = useGameStore()
     console.log("=== DIAGNOSTIC REPORT ===")

@@ -6,16 +6,26 @@ import type { NPCState, Customer } from '../../types/gameTypes'
 import type { EnvironmentManager } from './EnvironmentManager'
 
 /**
- * NPCManager - Quản lý logic AI và hành vi của khách hàng (NPC)
+ * NPCManager - Hệ thống điều phối AI cho toàn bộ khách hàng trong Game.
+ * 
+ * Chức năng chính:
+ * - Spawn khách hàng định kỳ dựa trên trạng thái Shop.
+ * - Quản lý AI State Machine (Máy trạng thái) cho từng NPC:
+ *   + Mua hàng (BUY): Tìm kệ -> Lấy đồ -> Xếp hàng thanh toán.
+ *   + Chơi bài (PLAY): Tìm bàn -> Chờ đối thủ -> Chơi -> Rời đi.
+ * - Xử lý vật lý di chuyển và giải quyết kẹt (Stuck Recovery).
+ * - Quản lý luồng đóng cửa (Evacuation) khi hết giờ làm việc.
  */
 export class NPCManager {
   private scene: Phaser.Scene
   private environmentManager: EnvironmentManager
   private customers: Customer[] = []
+  
+  // Cấu hình thông số AI
   private npcSpeed = 100
-  private stuckCheckInterval = 500 // ms
-  private decisionInterval = 1500 // ms
-  private boredomThreshold = 45000 // ms (45 seconds)
+  private stuckCheckInterval = 500 // Kiểm tra kẹt mỗi 0.5s
+  private decisionInterval = 1500  // Thay đổi quyết định mỗi 1.5s
+  private boredomThreshold = 45000 // Khách rời đi nếu chờ quá 45s mà không làm gì
 
   constructor(
     scene: Phaser.Scene,
@@ -26,7 +36,7 @@ export class NPCManager {
   }
 
   /**
-   * Cập nhật logic NPC gọi mỗi frame
+   * Phương thức Update chính, được gọi mỗi frame từ MainScene.
    */
   public update() {
     this.updateNPCs(this.scene.time.now)
@@ -40,7 +50,7 @@ export class NPCManager {
   }
 
   /**
-   * Xóa sạch toàn bộ NPC (dùng khi kết thúc ngày)
+   * Giải phóng toàn bộ NPC. Thường dùng khi người chơi bấm "Kết thúc ngày".
    */
   public cleanupAllNPCs() {
     this.customers.forEach(c => {
@@ -51,7 +61,7 @@ export class NPCManager {
   }
 
   /**
-   * Khởi tạo NPC spawn system
+   * Khởi chạy vòng lặp Spawn khách hàng tự động.
    */
   initializeNPCs() {
     this.scene.time.addEvent({
@@ -62,11 +72,12 @@ export class NPCManager {
   }
 
   /**
-   * Spawn một NPC mới
+   * Tạo một NPC mới tại cửa Shop với các ý định (Intent) ngẫu nhiên.
    */
   public spawnNPC() {
     const gameStore = useGameStore()
-    // Ngừng spawn nếu shop đã đóng hoặc quá 20:00 (1200 phút)
+    
+    // Kiểm tra điều kiện Shop: không spawn nếu đóng hoặc quá giờ làm việc (20:00)
     if (gameStore.shopState !== 'OPEN' || gameStore.timeInMinutes >= 1200) return
     if (this.customers.length >= 15) return
 
@@ -74,7 +85,7 @@ export class NPCManager {
     const npcSprite = this.scene.physics.add.sprite(doorLocation.x, doorLocation.y + 50, 'npc')
     npcSprite.setCollideWorldBounds(true).setDepth(DEPTH.NPC)
 
-    // 30% khách muốn chơi, 70% muốn mua hàng
+    // Quyết định mục đích: 30% khách đến để đánh bài, 70% đến để mua hàng
     const isPlayer = Math.random() < 0.3
 
     const instanceId = `npc_${Date.now()}_${Math.floor(Math.random() * 1000)}`
@@ -94,6 +105,7 @@ export class NPCManager {
       searchStartTime: this.scene.time.now
     }
 
+    // Tạo Text hiển thị trạng thái trên đầu NPC (Overhead Label)
     newCust.statusText = this.scene.add.text(npcSprite.x, npcSprite.y - 35, '...', {
       fontSize: '10px',
       color: '#ffffff',
@@ -101,56 +113,55 @@ export class NPCManager {
       padding: { x: 4, y: 2 }
     }).setOrigin(0.5).setDepth(DEPTH.UI_TEXT).setVisible(true)
 
-    console.log(`[SPAWN] NPC ${instanceId} spawned with intent: ${newCust.intent}`)
     this.customers.push(newCust)
   }
 
   /**
-   * Update tất cả NPC mỗi frame
+   * Cập nhật trạng thái cho từng khách hàng hiện có.
    * @param time Current game time in milliseconds
    */
   updateNPCs(time: number) {
     const gameStore = useGameStore()
+    
+    // Cờ báo hiệu Shop đang trong giai đoạn đóng cửa
     const isClosingTime = gameStore.timeInMinutes >= 1200 || gameStore.shopState === 'CLOSED'
     
     for (let i = this.customers.length - 1; i >= 0; i--) {
       const customer = this.customers[i]
       const sprite = customer.sprite
 
-      // Cập nhật animation và status text
+      // 1. Cập nhật diện mạo (Animation và Label)
       this.updateNPCAnimation(customer)
       this.updateStatusText(customer, time)
       this.handleStuckRecovery(customer, time)
 
-      // LOGIC ĐÓNG CỬA: Nếu đã hết giờ hoặc shop đóng
+      // 2. Logic đóng cửa: Ép buộc rời đi dựa trên tình trạng
       if (isClosingTime && customer.state !== 'LEAVE') {
-         // Khách chơi bài hoặc đang tìm bàn -> Về ngay
+         // Những người đang chơi bài hoặc tìm bàn thì phải về ngay
          if (customer.state === 'PLAYING' || customer.state === 'WANT_TO_PLAY' || customer.state === 'SEEK_TABLE') {
             this.npcLeaveShop(customer)
             continue
          }
-         // Khách đang vãng lai hoặc tìm đồ mà chưa mua gì -> Về ngay
+         // Những người chưa mua đồ thì mời về ngay
          if ((customer.state === 'WANDER' || customer.state === 'SEEK_ITEM') && customer.targetPrice === 0) {
             this.npcLeaveShop(customer)
             continue
          }
-         // Lưu ý: Nếu đang ở INTERACT, GO_CASHIER hoặc WAITING, chúng ta để họ thanh toán nốt rồi check ở dưới
       }
 
-      // Kiểm tra nếu NPC đang đợi thanh toán mà không còn trong hàng chờ của Store (đã được thanh toán)
+      // 3. Đồng bộ với Store: Nếu NPC đã được thanh toán (không còn trong queue) -> Cho phép rời đi
       if (customer.state === 'WAITING' || customer.state === 'GO_CASHIER') {
         const isInQueue = gameStore.waitingQueue.some((item: any) => item.instanceId === customer.instanceId)
         if (!isInQueue) {
-          console.log(`[CHECKOUT] NPC ${customer.instanceId} served. Leaving now.`)
           this.npcLeaveShop(customer)
           continue
         }
       }
 
-      // Thực hiện AI state machine
+      // 4. Chạy State Machine điều khiển AI hành vi
       this.handleNPCState(customer, time)
 
-      // Cleanup NPC đã rời đi quá lâu (dự phòng)
+      // 5. Cleanup: Xóa sprite nếu NPC đã rời đi quá xa/lâu
       if (customer.state === 'LEAVE' && time - (customer.timer || 0) > 15000) {
         if (customer.statusText) customer.statusText.destroy()
         sprite.destroy()
@@ -159,6 +170,9 @@ export class NPCManager {
     }
   }
 
+  /**
+   * Xử lý hướng Animation của Sprite dựa trên Vector vận tốc
+   */
   private updateNPCAnimation(customer: Customer) {
     const sprite = customer.sprite
     if (sprite.body && sprite.body.velocity.lengthSq() > 0) {
@@ -174,6 +188,9 @@ export class NPCManager {
     }
   }
 
+  /**
+   * Hiển thị Text trạng thái hiện tại (đang tìm gì, đang làm gì) trên đầu NPC
+   */
   private updateStatusText(customer: Customer, time: number) {
     if (!customer.statusText) return
     customer.statusText.setPosition(customer.sprite.x, customer.sprite.y - 35)
@@ -198,6 +215,9 @@ export class NPCManager {
     customer.statusText.setText(label)
   }
 
+  /**
+   * Xử lý thoát kẹt: Nếu NPC bị đứng yên quá lâu mặc dù có mục tiêu thì khởi động lại Physics
+   */
   private handleStuckRecovery(customer: Customer, time: number) {
     const moveStates: NPCState[] = ['WANDER', 'SEEK_ITEM', 'SEEK_TABLE', 'GO_CASHIER', 'LEAVE']
     if (!moveStates.includes(customer.state)) return
@@ -205,7 +225,7 @@ export class NPCManager {
     if (time > (customer.lastMoveAttemptTime || 0) + this.stuckCheckInterval) {
       customer.lastMoveAttemptTime = time
       const dist = Phaser.Math.Distance.Between(customer.sprite.x, customer.sprite.y, customer.targetX, customer.targetY)
-      const isStuck = customer.sprite.body && customer.sprite.body.velocity.lengthSq() < 100
+      const isStuck = customer.sprite.body && customer.sprite.body.velocity.lengthSq() < 100 // Vận tốc quá thấp
 
       if (dist > 15 && isStuck) {
         this.scene.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, this.npcSpeed)
@@ -213,6 +233,7 @@ export class NPCManager {
     }
   }
 
+  /** Central Dispatcher: Điều hướng logic xử lý dựa trên State */
   private handleNPCState(customer: Customer, time: number) {
     switch (customer.state) {
       case 'SPAWN': this.handleSpawn(customer, time); break;
@@ -228,6 +249,7 @@ export class NPCManager {
     }
   }
 
+  /** NPC mới xuất hiện đi bộ vào giữa cửa hàng */
   private handleSpawn(customer: Customer, time: number) {
     if (time > customer.timer) {
       customer.state = customer.intent === 'PLAY' ? 'WANT_TO_PLAY' : 'WANDER'
@@ -238,6 +260,7 @@ export class NPCManager {
     }
   }
 
+  /** Tìm bàn còn trống để tham gia chơi bài */
   private handleWantToPlay(customer: Customer, time: number) {
     const store = useGameStore()
     const tables = Object.values(store.placedTables)
@@ -251,6 +274,7 @@ export class NPCManager {
     }
 
     if (bestTableId) {
+      // Đăng ký vào bàn trong Store
       const seatIndex = store.joinTable(bestTableId, customer.instanceId)
       if (seatIndex !== null) {
         customer.state = 'SEEK_TABLE'
@@ -262,6 +286,7 @@ export class NPCManager {
         this.scene.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, this.npcSpeed)
       }
     } else {
+      // Nếu không tìm thấy bàn, chờ một lúc hoặc chuyển sang mua hàng
       const searchTime = time - (customer.searchStartTime || 0)
       if (searchTime > 10000 || Math.random() < 0.2) {
         customer.intent = 'BUY'
@@ -283,26 +308,30 @@ export class NPCManager {
     }
   }
 
+  /** Xử lý trong trận đấu: tính thời gian và EXP khi thắng */
   private handlePlaying(customer: Customer, time: number) {
     const gStore = useGameStore()
     const myTable = gStore.placedTables[customer.assignedTableId!]
     if (!myTable) { customer.state = 'LEAVE'; return; }
 
+    // Nếu đủ 2 người và trận chưa bắt đầu -> Bắt đầu tính giờ
     if (myTable.occupants.every(o => o !== null) && !myTable.matchStartedAt) {
       gStore.startMatch(myTable.id)
     }
 
     if (myTable.matchStartedAt) {
       const elapsed = Date.now() - myTable.matchStartedAt
-      const duration = 12000
+      const duration = 12000 // Một ván bài kéo dài 12s
 
+      // Hiệu ứng Visual "Đánh bài" tung tóe
       if (time % 1000 < 50) {
         const emo = this.scene.add.text(customer.sprite.x, customer.sprite.y - 40, '🃏', { fontSize: '16px' }).setOrigin(0.5)
         this.scene.tweens.add({ targets: emo, y: emo.y - 20, alpha: 0, duration: 800, onComplete: () => emo.destroy() })
       }
 
+      // Khi ván bài kết thúc
       if (elapsed >= duration) {
-        if (customer.seatIndex === 0) {
+        if (customer.seatIndex === 0) { // Chỉ tính thưởng XP 1 lần trên mỗi bàn
           gStore.finishMatch(myTable.id)
           gStore.gainExp(50)
           const xpText = this.scene.add.text(myTable.x, myTable.y - 60, '+50 XP', { fontSize: '18px', color: '#f1c40f', fontStyle: 'bold' }).setOrigin(0.5)
@@ -313,7 +342,9 @@ export class NPCManager {
     }
   }
 
+  /** Khách đi dạo tìm kiếm kệ hàng có sản phẩm */
   private handleWander(customer: Customer, time: number) {
+    // Nếu quá chán nản thì về
     if (time - customer.spawnTime > this.boredomThreshold) {
       this.npcLeaveShop(customer)
       return
@@ -323,7 +354,9 @@ export class NPCManager {
       customer.lastDecisionTime = time
       const store = useGameStore()
 
+      // Trường hợp 1: Muốn chơi -> Tìm bàn trống
       if (customer.intent === 'PLAY') {
+         // (Logic tương tự handleWantToPlay nhưng dùng để re-scan định kỳ)
         const tables = Object.values(store.placedTables)
         let found = false
         for (const table of tables) {
@@ -343,6 +376,7 @@ export class NPCManager {
         }
         if (!found && Math.random() < 0.3) { customer.intent = 'BUY' }
       } else {
+        // Trường hợp 2: Muốn mua -> Tìm kệ có hàng
         const shelves = Object.values(store.placedShelves)
         let foundShelfId = null
         for (const shelf of shelves) {
@@ -358,6 +392,7 @@ export class NPCManager {
           customer.targetY = shelf.y + 45
           this.scene.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, this.npcSpeed)
         } else if (Math.random() < 0.4) {
+          // Nếu không thấy hàng, 40% cơ hội chuyển hướng sang Chơi bài hoặc Về
           if (Math.random() < 0.5) {
             customer.intent = 'PLAY'
             customer.state = 'WANT_TO_PLAY'
@@ -369,6 +404,7 @@ export class NPCManager {
       }
     }
 
+    // Nếu đã tới điểm Wander ngẫu nhiên, tìm mốc Wander mới trong nhà
     if (Phaser.Math.Distance.Between(customer.sprite.x, customer.sprite.y, customer.targetX, customer.targetY) < 12) {
       customer.sprite.body!.velocity.set(0)
       const shopBounds = this.environmentManager.getShopBounds()
@@ -381,11 +417,12 @@ export class NPCManager {
   private handleSeekItem(customer: Customer, time: number) {
     if (Phaser.Math.Distance.Between(customer.sprite.x, customer.sprite.y, customer.targetX, customer.targetY) < 12) {
       customer.sprite.body!.velocity.set(0)
-      customer.state = 'INTERACT'
+      customer.state = 'INTERACT' // Bắt đầu lựa chọn hàng
       customer.timer = time + 1000
     }
   }
 
+  /** NPC đứng tại kệ và thực hiện hành động lấy hàng */
   private handleInteract(customer: Customer, time: number) {
     if (time > customer.timer) {
       const store = useGameStore()
@@ -396,28 +433,32 @@ export class NPCManager {
         }
       }
 
+      // Trừ hàng trong Store và thu thập thông tin giá cả
       const itemId = shelfIdTaken ? store.npcTakeItemFromSlot(shelfIdTaken) : null
       if (itemId) {
         const itemData = store.shopItems[itemId]
         customer.targetPrice = itemData ? itemData.sellPrice : 15
+        
+        // Popup thông báo lấy được hàng
         const popupText = itemData?.type === 'box' ? '+1 Box 📦' : '+1 Pack 🎁'
         const popup = this.scene.add.text(customer.sprite.x, customer.sprite.y - 40, popupText, { fontSize: '12px', color: '#00ff00', fontStyle: 'bold' }).setOrigin(0.5)
         this.scene.tweens.add({ targets: popup, y: popup.y - 30, alpha: 0, duration: 1500, onComplete: () => popup.destroy() })
 
-        // Chuyển sang GO_CASHIER
+        // Chuyển sang hàng chờ Thanh toán
         customer.state = 'GO_CASHIER'
         store.addWaitingCustomer(customer.targetPrice, customer.instanceId)
         
-        // Tìm vị trí quầy thu ngân để xếp hàng
+        // Di chuyển tới xếp hàng tại quầy Thu Ngân
         const cashier = Object.values(store.placedCashiers)[0] // Lấy quầy đầu tiên
         if (cashier) {
           const shopStore = useShopStore()
           const myIndex = shopStore.waitingQueue.findIndex(item => item.instanceId === customer.instanceId)
           customer.targetX = cashier.x
-          customer.targetY = cashier.y + 60 + (myIndex * 40) // Xếp hàng dọc xuống
+          customer.targetY = cashier.y + 60 + (myIndex * 40) // Xếp hàng dọc xuống (Social Distancing)
           this.scene.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, this.npcSpeed)
         }
       } else {
+        // Kệ hết hàng -> Đánh dấu đã kiểm tra và đi tiếp tục Wander
         if (shelfIdTaken) customer.checkedShelfIds.push(shelfIdTaken)
         customer.state = 'WANDER'
       }
@@ -433,6 +474,7 @@ export class NPCManager {
     }
   }
 
+  /** Đứng chờ tới lượt thanh toán. Nếu người trước xong, NPC sẽ tiến lên một bước */
   private handleWaiting(customer: Customer) {
     const shopStore = useShopStore()
     const myIndex = shopStore.waitingQueue.findIndex(item => item.instanceId === customer.instanceId)
@@ -443,14 +485,15 @@ export class NPCManager {
       const expectedY = cashier.y + 60 + (myIndex * 40)
       if (Math.abs(customer.targetY - expectedY) > 5) {
         customer.targetY = expectedY
-        customer.state = 'GO_CASHIER'
+        customer.state = 'GO_CASHIER' // Di chuyển lên vị trí hàng chờ mới
       }
     }
     customer.sprite.body!.velocity.set(0)
   }
 
+  /** Logic dọn dẹp và di chuyển ra khỏi cửa hàng */
   private handleLeave(customer: Customer) {
-    // Cleanup table occupancy
+    // 1. Giải phóng ghế nếu NPC đang ngồi bàn
     if (customer.assignedTableId && customer.seatIndex !== undefined) {
       const gStore = useGameStore()
       const table = gStore.placedTables[customer.assignedTableId]
@@ -459,9 +502,10 @@ export class NPCManager {
       }
     }
 
+    // 2. Kiểm tra nếu đã ra tới ngoài vỉa hè thì Destroy object
     const doorLocation = this.environmentManager.getDoorLocation()
     if (Phaser.Math.Distance.Between(customer.sprite.x, customer.sprite.y, customer.targetX, customer.targetY) < 15) {
-      if (customer.targetY > doorLocation.y) {
+      if (customer.targetY > doorLocation.y) { // Đã đi qua mốc cửa
         if (customer.statusText) customer.statusText.destroy()
         customer.sprite.destroy()
         const idx = this.customers.indexOf(customer)
@@ -470,16 +514,19 @@ export class NPCManager {
     }
   }
 
+  /** Lệnh cưỡng chế NPC rời đi (Dùng khi hoàn tất thanh toán hoặc đóng cửa) */
   private npcLeaveShop(customer: Customer) {
     if (!customer.sprite.active) return
     customer.state = 'LEAVE'
     customer.timer = this.scene.time.now
     const doorLocation = this.environmentManager.getDoorLocation()
 
+    // Điểm mốc 1: Đi tới cửa
     customer.targetX = doorLocation.x
     customer.targetY = doorLocation.y - 40
     this.scene.physics.moveTo(customer.sprite, customer.targetX, customer.targetY, this.npcSpeed)
 
+    // Điểm mốc 2: Đi hẳn ra ngoài sau 1s
     this.scene.time.addEvent({
       delay: 1000,
       callback: () => {
