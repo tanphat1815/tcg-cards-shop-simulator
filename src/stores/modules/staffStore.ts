@@ -16,6 +16,13 @@ export const useStaffStore = defineStore('staff', {
      */
     hireWorker(workerId: string) {
       const statsStore = useStatsStore()
+      
+      // Kiểm tra nhân viên đã được thuê chưa
+      if (this.hiredWorkers.some(hw => hw.workerId === workerId)) {
+        console.warn(`[Staff] Worker ${workerId} is already hired.`)
+        return false
+      }
+
       const data = WORKERS.find(w => w.id === workerId)
       if (!data) return false
       if (!statsStore.spendMoney(data.hiringFee)) return false

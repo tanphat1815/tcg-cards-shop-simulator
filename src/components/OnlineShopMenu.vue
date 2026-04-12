@@ -301,12 +301,16 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
                   </div>
 
                   <button 
-                    :disabled="statsStore.level < w.levelUnlocked"
+                    :disabled="statsStore.level < w.levelUnlocked || staffStore.hiredWorkers.some(hw => hw.workerId === w.id)"
                     @click="hireWorker(w.id)"
                     class="w-full font-bold py-2.5 px-4 rounded-xl shadow-md uppercase tracking-wider transition-all active:scale-95"
-                    :class="statsStore.level >= w.levelUnlocked ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'"
+                    :class="[
+                      statsStore.level < w.levelUnlocked || staffStore.hiredWorkers.some(hw => hw.workerId === w.id)
+                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    ]"
                   >
-                    Thuê Ngay
+                    {{ staffStore.hiredWorkers.some(hw => hw.workerId === w.id) ? 'Đang Thuê' : 'Thuê Ngay' }}
                   </button>
                 </div>
               </div>

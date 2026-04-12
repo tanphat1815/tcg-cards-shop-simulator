@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { useGameStore } from '../stores/gameStore'
 import { useStatsStore } from '../stores/modules/statsStore'
 import { useShopStore } from '../stores/modules/shopStore'
+import { useStaffStore } from '../stores/modules/staffStore'
 import playerImg from '../assets/images/player.svg'
 import npcImg from '../assets/images/npc.svg'
 import shelfImg from '../assets/images/shelf.svg'
@@ -11,6 +12,7 @@ import { DEPTH } from '../config/renderConfigs'
 import { EnvironmentManager } from './managers/EnvironmentManager'
 import { FurnitureManager } from './managers/FurnitureManager'
 import { NPCManager } from './managers/NPCManager'
+import { StaffManager } from './managers/StaffManager'
 
 /**
  * MainScene - Orchestrator chính của game Phaser.
@@ -24,6 +26,7 @@ export default class MainScene extends Phaser.Scene {
   public environmentManager!: EnvironmentManager
   public furnitureManager!: FurnitureManager
   public npcManager!: NPCManager
+  public staffManager!: StaffManager
 
   // Input & UI
   private keyE!: Phaser.Input.Keyboard.Key
@@ -79,6 +82,7 @@ export default class MainScene extends Phaser.Scene {
     this.environmentManager = new EnvironmentManager(this)
     this.furnitureManager = new FurnitureManager(this)
     this.npcManager = new NPCManager(this, this.environmentManager)
+    this.staffManager = new StaffManager(this)
 
     // 3. UI & Animations
     this.setupAnimations()
@@ -109,6 +113,9 @@ export default class MainScene extends Phaser.Scene {
     
     // 9. Lắng nghe Store changes
     this.setupStoreSubscriptions(gameStore)
+
+    // Khởi tạo nhân viên ban đầu
+    this.staffManager.syncWorkers()
 
     // 10. Khởi động vòng lặp spawn NPC
     this.time.addEvent({
@@ -241,6 +248,12 @@ export default class MainScene extends Phaser.Scene {
       }
     })
 
+    // Lắng nghe staffStore
+    useStaffStore().$subscribe(() => {
+      console.log("DEBUG: staffStore changed, syncing workers")
+      this.staffManager.syncWorkers()
+    })
+
     // Lắng nghe shopState thay đổi (ví dụ: spawn NPC khi mở cửa)
     shopStore.$subscribe((_mutation, state) => {
        // Refresh khi mở rộng hoặc thay đổi trạng thái shop
@@ -264,6 +277,7 @@ export default class MainScene extends Phaser.Scene {
     // 1. Cập nhật Managers
     this.npcManager.update()
     this.furnitureManager.updateFurnitureVisuals()
+    this.staffManager.update(time)
 
     // 2. Tương tác phím E
     if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
