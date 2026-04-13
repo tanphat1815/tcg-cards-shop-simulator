@@ -8,4 +8,13 @@ export default defineConfig({
     vue(),
     tailwindcss(),
   ],
+  server: {
+    proxy: {
+      '/api/tcgdex': {
+        target: 'https://api.tcgdex.net/v2/en',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/tcgdex/, ''),
+      },
+    },
+  },
 })

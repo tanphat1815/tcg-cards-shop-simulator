@@ -217,25 +217,31 @@ const allFlipped = () => {
               <span class="text-sm font-black text-red-700 bg-white/70 px-1.5 py-0.5 rounded shadow-sm">{{ card.hp }} <span class="text-[10px]">HP</span></span>
             </div>
 
-            <!-- Image Placeholder -->
+            <!-- Image -->
             <div class="flex-grow my-2 bg-gradient-to-br from-white/60 to-white/20 rounded shadow-inner border border-white/50 flex items-center justify-center overflow-hidden relative">
-               <div class="text-6xl drop-shadow-xl transform transition-transform hover:scale-110">
-                 {{ card.type === 'Fire' ? '🔥' : card.type === 'Water' ? '💧' : card.type === 'Grass' ? '🍃' : card.type === 'Electric' ? '⚡' : '🔮' }}
-               </div>
+              <img 
+                v-if="card.image" 
+                :src="card.image + '/low.webp'" 
+                :alt="card.name" 
+                class="w-full h-full object-cover rounded"
+              />
+              <div v-else class="text-6xl drop-shadow-xl transform transition-transform hover:scale-110">
+                {{ card.types?.[0] === 'Fire' ? '🔥' : card.types?.[0] === 'Water' ? '💧' : card.types?.[0] === 'Grass' ? '🍃' : card.types?.[0] === 'Electric' ? '⚡' : '🔮' }}
+              </div>
             </div>
 
             <!-- Footer / Stats -->
             <div class="bg-black/85 rounded-b-lg p-2.5 text-center border-t border-white/30 shadow-md">
               <div class="text-[11px] uppercase font-bold tracking-widest"
                 :class="{
-                  'text-gray-400': card.rarity === 'Common',
+                  'text-gray-400': card.rarity === 'Common' || card.rarity === 'None',
                   'text-blue-300': card.rarity === 'Uncommon',
                   'text-yellow-400': card.rarity === 'Rare',
                 }"
               >
                 {{ card.rarity }}
               </div>
-              <div class="text-green-400 font-black text-lg mt-1 tracking-wide">${{ card.marketPrice.toFixed(2) }}</div>
+              <div class="text-green-400 font-black text-lg mt-1 tracking-wide">${{ card.pricing?.tcgplayer?.normal?.marketPrice?.toFixed(2) || 'N/A' }}</div>
             </div>
             
             <!-- Holo Effect Overlay for Rare -->

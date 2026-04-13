@@ -3,6 +3,7 @@ import { useStatsStore } from './modules/statsStore'
 import { useInventoryStore } from './modules/inventoryStore'
 import { useShopStore } from './modules/shopStore'
 import { useStaffStore } from './modules/staffStore'
+import { useApiStore } from './modules/apiStore'
 
 /**
  * GameStore (Facade): Cổng giao tiếp chính kết hợp tất cả các module store.
@@ -162,6 +163,9 @@ export const useGameStore = defineStore('game', {
           useInventoryStore().loadInventory(parsed)
           useShopStore().loadShop(parsed)
           useStaffStore().loadStaff(parsed)
+          
+          // Tự động khôi phục dữ liệu API từ cache hoặc fetch mới
+          useApiStore().initSeriesShop()
         } catch (e) {
           console.error("Lỗi nghiêm trọng khi đọc file save", e)
         }

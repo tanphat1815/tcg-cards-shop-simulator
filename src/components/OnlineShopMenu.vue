@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useGameStore } from '../stores/gameStore'
 import { useStatsStore } from '../stores/modules/statsStore'
 import { useInventoryStore } from '../stores/modules/inventoryStore'
 import { useShopStore } from '../stores/modules/shopStore'
 import { useStaffStore } from '../stores/modules/staffStore'
+import { useApiStore } from '../stores/modules/apiStore'
 import { useButton, useIconButton } from '../composables/useButton'
-import { STOCK_ITEMS, FURNITURE_ITEMS } from '../config/shopData'
+import { FURNITURE_ITEMS } from '../config/shopData'
 
 const gameStore = useGameStore()
 const statsStore = useStatsStore()
 const inventoryStore = useInventoryStore()
 const shopStore = useShopStore()
 const staffStore = useStaffStore()
+const apiStore = useApiStore()
 const activeTab = ref<'STOCK' | 'FURNITURE' | 'STAFF' | 'RENO' | 'SETTINGS'>('STOCK')
 
 // Button composables for purchase actions
@@ -23,6 +25,23 @@ const purchaseExpansionBtn = useButton('warning', 'md', false, false, true)
 const terminateWorkerBtn = useIconButton('danger', 'sm')
 import { WORKERS } from '../config/workerData'
 import { EXPANSIONS_LOT_A } from '../config/expansionData'
+
+const shopItems = computed(() => {
+  return Object.values(inventoryStore.shopItems)
+    .sort((a, b) => {
+      if (a.requiredLevel !== b.requiredLevel) return a.requiredLevel - b.requiredLevel
+      return a.name.localeCompare(b.name)
+    })
+})
+
+const isShopLoading = computed(() => apiStore.isLoading)
+const shopError = computed(() => apiStore.error)
+
+watch(() => gameStore.showOnlineShop, (opened) => {
+  if (opened) {
+    apiStore.initSeriesShop('swsh')
+  }
+})
 
 const purchaseStock = (id: string, price: number) => {
   if (statsStore.money < price) {
@@ -138,53 +157,64 @@ const getWorkerData = (id: string) => WORKERS.find(w => w.id === id)
       <div class="bg-gray-50 flex-grow p-8 overflow-y-auto custom-scroll">
         
         <!-- Stock Tab -->
-        <div v-if="activeTab === 'STOCK'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <div 
-            v-for="item in Object.values(STOCK_ITEMS)" 
-            :key="item.id"
-            class="bg-white rounded-xl overflow-hidden shadow-md border border-gray-200 relative group flex flex-col"
-          >
-            <!-- Lock Overlay if Level not met -->
-            <div v-if="statsStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
-              <span class="text-4xl mb-2">🔒</span>
-              <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-sm shadow-xl border-2 border-red-800">
-                Unlock at Level {{ item.requiredLevel }}
-              </div>
-            </div>
-
-            <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': statsStore.level < item.requiredLevel }">
-               <div class="text-[80px] drop-shadow-xl transform group-hover:scale-110 transition-transform">
-                 🎁
-               </div>
-            </div>
-            <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': statsStore.level < item.requiredLevel }">
-              <div class="flex justify-between items-start mb-2">
-                <h3 class="font-bold text-gray-900 text-lg leading-tight">{{ item.name }}</h3>
-                <span v-if="inventoryStore.shopInventory[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
-                  Có: {{ inventoryStore.shopInventory[item.id] }}
-                </span>
-              </div>
-              <p class="text-xs text-gray-500 mb-4 line-clamp-2 h-8">{{ item.description }}</p>
-              
-              <div class="mt-auto bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
-                 <div class="flex justify-between text-sm mb-1">
-                   <span class="text-gray-500">Giá nhập (Cost):</span>
-                   <span class="font-bold text-gray-800">${{ item.buyPrice }}</span>
-                 </div>
-                 <div class="flex justify-between text-sm">
-                   <span class="text-gray-500">Giá bán dự kiến:</span>
-                   <span class="font-bold text-green-600">${{ item.sellPrice }}</span>
-                 </div>
+        <div v-if="activeTab === 'STOCK'" class="space-y-4">
+          <div v-if="isShopLoading" class="rounded-2xl bg-white/90 border border-gray-200 p-6 text-center text-gray-700">
+            Đang tải danh sách Set từ TCGdex... Vui lòng đợi.
+          </div>
+          <div v-if="shopError" class="rounded-2xl bg-red-50 border border-red-200 p-6 text-center text-red-700">
+            Lỗi tải shop API: {{ shopError }}
+          </div>
+          <div v-if="!isShopLoading && shopItems.length === 0" class="rounded-2xl bg-white/90 border border-gray-200 p-6 text-center text-gray-700">
+            Chưa có mặt hàng nào. Kiểm tra lại kết nối API hoặc tải lại cửa hàng.
+          </div>
+          <div v-if="!isShopLoading && shopItems.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div 
+              v-for="item in shopItems" 
+              :key="item.id"
+              class="bg-white rounded-xl overflow-hidden shadow-md border border-gray-200 relative group flex flex-col"
+            >
+              <!-- Lock Overlay if Level not met -->
+              <div v-if="statsStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
+                <span class="text-4xl mb-2">🔒</span>
+                <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-sm shadow-xl border-2 border-red-800">
+                  Unlock at Level {{ item.requiredLevel }}
+                </div>
               </div>
 
-              <button 
-                :disabled="statsStore.level < item.requiredLevel"
-                @click="purchaseStock(item.id, item.buyPrice)"
-                :class="purchaseStockBtn.classes"
-                class="uppercase tracking-wider"
-              >
-                Nhập Ngay (${{ item.buyPrice }})
-              </button>
+              <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': statsStore.level < item.requiredLevel }">
+                 <div class="text-[80px] drop-shadow-xl transform group-hover:scale-110 transition-transform">
+                   🎁
+                 </div>
+              </div>
+              <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': statsStore.level < item.requiredLevel }">
+                <div class="flex justify-between items-start mb-2">
+                  <h3 class="font-bold text-gray-900 text-lg leading-tight">{{ item.name }}</h3>
+                  <span v-if="inventoryStore.shopInventory[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
+                    Có: {{ inventoryStore.shopInventory[item.id] }}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-500 mb-4 line-clamp-2 h-8">{{ item.description }}</p>
+                
+                <div class="mt-auto bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
+                   <div class="flex justify-between text-sm mb-1">
+                     <span class="text-gray-500">Giá nhập (Cost):</span>
+                     <span class="font-bold text-gray-800">${{ item.buyPrice }}</span>
+                   </div>
+                   <div class="flex justify-between text-sm">
+                     <span class="text-gray-500">Giá bán dự kiến:</span>
+                     <span class="font-bold text-green-600">${{ item.sellPrice }}</span>
+                   </div>
+                </div>
+
+                <button 
+                  :disabled="statsStore.level < item.requiredLevel"
+                  @click="purchaseStock(item.id, item.buyPrice)"
+                  :class="purchaseStockBtn.classes"
+                  class="uppercase tracking-wider"
+                >
+                  Nhập Ngay (${{ item.buyPrice }})
+                </button>
+              </div>
             </div>
           </div>
         </div>

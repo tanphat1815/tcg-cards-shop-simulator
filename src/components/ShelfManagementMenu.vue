@@ -2,7 +2,6 @@
 import { ref, computed } from 'vue'
 import { useShopStore } from '../stores/modules/shopStore'
 import { useInventoryStore } from '../stores/modules/inventoryStore'
-import { STOCK_ITEMS } from '../config/shopData'
 import EnhancedButton from './shared/EnhancedButton.vue'
 
 const shopStore = useShopStore()
@@ -13,7 +12,7 @@ const inventoryItems = computed(() => {
   return Object.keys(inventoryStore.shopInventory)
     .map(itemId => ({
       id: itemId,
-      item: STOCK_ITEMS[itemId],
+      item: inventoryStore.shopItems[itemId],
       quantity: inventoryStore.shopInventory[itemId]
     }))
     .filter(x => x.item !== undefined && x.quantity > 0)
@@ -125,7 +124,7 @@ const tierFillPct = (tierIndex: number): number => {
 
           <div v-if="selectedItemId" class="mt-3 pt-3 border-t border-gray-700">
             <p class="text-[11px] text-indigo-300 text-center mb-2">
-              ✅ Đang chọn: <br><strong class="text-yellow-300">{{ STOCK_ITEMS[selectedItemId]?.name }}</strong>
+              ✅ Đang chọn: <br><strong class="text-yellow-300">{{ inventoryStore.shopItems[selectedItemId]?.name }}</strong>
             </p>
             <p class="text-[10px] text-gray-500 text-center italic">
               Shift+Click vào tầng để điền đầy
@@ -158,8 +157,8 @@ const tierFillPct = (tierIndex: number): number => {
 
                 <!-- Tier status / item info -->
                 <div v-if="tier.itemId" class="flex items-center gap-2">
-                  <span class="text-sm">{{ STOCK_ITEMS[tier.itemId]?.type === 'box' ? '📦' : '🎁' }}</span>
-                  <span class="text-xs font-bold text-white">{{ STOCK_ITEMS[tier.itemId]?.name }}</span>
+                  <span class="text-sm">{{ inventoryStore.shopItems[tier.itemId]?.type === 'box' ? '📦' : '🎁' }}</span>
+                  <span class="text-xs font-bold text-white">{{ inventoryStore.shopItems[tier.itemId]?.name }}</span>
                   <span class="text-xs text-gray-400">{{ tier.slots.length }}/{{ tier.maxSlots }}</span>
                   <!-- Fill bar -->
                   <div class="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
@@ -192,7 +191,7 @@ const tierFillPct = (tierIndex: number): number => {
               </div>
 
               <!-- Pack tier -->
-              <div v-else-if="STOCK_ITEMS[tier.itemId]?.type === 'pack'"
+              <div v-else-if="inventoryStore.shopItems[tier.itemId]?.type === 'pack'"
                 class="grid gap-[3px]"
                 style="grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(8, auto);"
               >
@@ -211,7 +210,7 @@ const tierFillPct = (tierIndex: number): number => {
               </div>
 
               <!-- Box tier -->
-              <div v-else-if="STOCK_ITEMS[tier.itemId]?.type === 'box'"
+              <div v-else-if="inventoryStore.shopItems[tier.itemId]?.type === 'box'"
                 class="grid grid-cols-4 gap-3"
               >
                 <div
