@@ -169,9 +169,9 @@ export const useGameStore = defineStore('game', {
      */
     loadSave() {
       // BƯỚC 0: XÓA TOÀN BỘ save cũ (Yêu cầu bởi REFACTOR_SUPPLEMENT.md)
-      localStorage.removeItem('tcg-shop-save')
-      localStorage.removeItem('tcg-shop-api-cache')
-      console.log('[GameStore] Save data cleared due to refactor. Starting fresh.')
+      // localStorage.removeItem('tcg-shop-save')
+      // localStorage.removeItem('tcg-shop-api-cache')
+      // console.log('[GameStore] Save data cleared due to refactor. Starting fresh.')
 
       const saved = localStorage.getItem('tcg-shop-save')
       if (saved) {

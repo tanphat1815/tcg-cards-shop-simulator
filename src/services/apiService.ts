@@ -357,8 +357,6 @@ class ApiService {
       return { error: 'No data returned from set API' }
     }
 
-    console.log(`[API] Set ${setId} data:`, Object.keys(setResult.data))
-
     // Try to get cards - SDK might return different structures
     let allCards = setResult.data.cards
 
@@ -377,70 +375,30 @@ class ApiService {
       return { error: `Set ${setId} has no cards` }
     }
 
-    // Create weighted selection based on rarity
-    const cardWeights: Array<{ card: any; weight: number }> = allCards.map((card: any) => {
-      let weight = 1
-      const rarity = card.rarity || 'None'
-      
-      switch(rarity) {
-        case 'Common':
-        case 'None':
-          weight = 60 // ~62.5%
-          break
-        case 'Uncommon':
-          weight = 30 // ~31.25%
-          break
-        case 'Rare':
-          weight = 8 // ~8.33%
-          break
-        case 'Ultra Rare':
-        case 'Double Rare':
-          weight = 2 // ~2.08%
-          break
-        case 'Secret Rare':
-        case 'Illustration Rare':
-        case 'Special Illustration Rare':
-        case 'Mega Secret Rare':
-        case 'Hyper Secret Rare':
-        case 'Ghost Rare':
-          weight = 1 // ~1.04%
-          break
-        default:
-          weight = 10 // fallback
-          break
-      }
-      return { card, weight }
-    })
-
-    // Select cards based on weights
-    const selectedCards: TcgCard[] = []
-    for (let i = 0; i < count; i++) {
-      const selected = this.weightedRandomSelect(cardWeights) as { card: any; weight: number } | null
-      if (selected) {
-        selectedCards.push({
-          id: selected.card.id,
-          name: selected.card.name,
-          image: selected.card.image || '',
-        })
-      }
+    // Filter cards having images only
+    const cardsWithImages = allCards.filter((card: any) => card.image)
+    
+    if (cardsWithImages.length === 0) {
+      console.warn(`[API] Set ${setId} has no cards with images, falling back to all cards`)
     }
+    const pool = cardsWithImages.length > 0 ? cardsWithImages : allCards
+
+    // Select cards
+    // NOTE: Since getSet only returns summaries (no rarity), 
+    // selection here is effectively uniform.
+    const selectedSummaries = this.selectRandomItems(pool, count)
+
+    // Parallel fetch full details for selected cards
+    const fullCardsPromises = selectedSummaries.map(summary => this.getCardDetails((summary as any).id))
+    const results = await Promise.all(fullCardsPromises)
+    
+    const selectedCards = results
+      .map(r => r.data)
+      .filter(Boolean) as TcgCard[]
 
     return { data: selectedCards }
   }
 
-  private weightedRandomSelect<T extends { weight: number }>(items: T[]): T | null {
-    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0)
-    let random = Math.random() * totalWeight
-
-    for (const item of items) {
-      random -= item.weight
-      if (random <= 0) {
-        return item
-      }
-    }
-
-    return items[items.length - 1] // fallback
-  }
 
   async getCardDetails(cardId: string): Promise<ApiResponse<TcgCard>> {
     const cacheKey = `card_${cardId}`

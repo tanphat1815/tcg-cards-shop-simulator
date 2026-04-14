@@ -33,6 +33,12 @@ export const useInventoryStore = defineStore('inventory', {
     currentPack: [] as any[],
     /** Lưu trữ pack cuối cùng đã xé để debug */
     lastPackPulled: [] as any[], 
+
+    /** Phase của UI mở pack: 'idle' | 'pack_visible' | 'cards_visible' */
+    packPhase: 'idle' as 'idle' | 'pack_visible' | 'cards_visible',
+
+    /** ID của pack đang được hiển thị (để lấy ảnh booster) */
+    currentPackId: null as string | null,
   }),
   actions: {
     /**
@@ -97,51 +103,86 @@ export const useInventoryStore = defineStore('inventory', {
 
       if (!this.shopInventory[packId] || this.shopInventory[packId] <= 0) return
 
-      // Get the original setId from shop items instead of parsing packId
       const packItem = apiStore.shopItems[packId]
       if (!packItem) {
         console.error(`Pack item not found: ${packId}`)
         return
       }
 
-      // Use sourceSetId which is the original API set ID
       const setId = packItem.sourceSetId || packId.replace('pack_', '')
-      console.log(`[TearPack] Opening pack ${packId} with setId: ${setId}`)
 
-      // OPTIMIZATION: Get weighted random cards directly
+      // --- UI IMPROVEMENT: Hiện Pack ngay lập tức để người dùng thấy animation rung ---
+      this.currentPack = [] // Clear old cards
+      this.currentPackId = packId
+      this.isOpeningPack = true
+      this.packPhase = 'pack_visible'
+
+      // Bắt đầu fetch dữ liệu ngầm
       const randomCardsResult = await apiStore.getWeightedRandomCardsFromSet(setId, 6)
 
       if (!randomCardsResult || randomCardsResult.length === 0) {
         console.error('Failed to get random cards from set:', setId)
+        this.isOpeningPack = false // Revert UI
         return
       }
 
-      const pulledCards: any[] = randomCardsResult
+      // --- RARITY SORT: Đảm bảo thẻ hiếm nhất luôn ở VỊ TRÍ CUỐI (index 5) ---
+      const RARITY_RANK: Record<string, number> = {
+        'Ghost Rare': 10,
+        'Hyper Secret Rare': 9,
+        'Mega Secret Rare': 9,
+        'Special Illustration Rare': 8,
+        'Illustration Rare': 7,
+        'Secret Rare': 6,
+        'Ultra Rare': 5,
+        'Double Rare': 4,
+        'Rare Holo': 3,
+        'Rare': 3,
+        'Uncommon': 1,
+        'Common': 0,
+        'None': 0,
+      }
 
+      const getRarityRank = (card: any): number => {
+        const rarity = card.rarity || 'None'
+        return RARITY_RANK[rarity] ?? (rarity.includes('Rare') ? 2 : 0)
+      }
+
+      // Tách thẻ hiếm nhất ra, đặt ở cuối
+      let sortedCards = [...randomCardsResult]
+      sortedCards.sort((a, b) => getRarityRank(a) - getRarityRank(b))
+
+      // Trừ kho hàng
       this.shopInventory[packId]--
       if (this.shopInventory[packId] === 0) delete this.shopInventory[packId]
 
-      // Thêm vào binder và thưởng XP
-      for (const card of pulledCards) {
+      // --- LƯU ĐẦY ĐỦ dữ liệu vào personalBinder ---
+      for (const card of sortedCards) {
         if (!this.personalBinder[card.id]) {
           this.personalBinder[card.id] = 0
         }
         this.personalBinder[card.id]++
 
-        // Thưởng XP dựa trên độ hiếm
-        if (card.rarity === 'Rare' || card.rarity === 'Ultra Rare' || card.rarity === 'Secret Rare') {
+        // Thưởng XP dựa trên độ thực (giờ đã có detail nên rank sẽ chính xác)
+        const rank = getRarityRank(card)
+        if (rank >= 3) { // Rare trở lên
           statsStore.gainExp(XP_REWARDS.OPEN_PACK_RARE)
         } else {
           statsStore.gainExp(XP_REWARDS.OPEN_PACK_COMMON)
         }
       }
 
-      // Hiển thị kết quả xé pack
-      this.lastPackPulled = pulledCards
-      console.log('Pulled cards:', pulledCards.map(c => `${c.name} (${c.rarity})`))
+      // Cập nhật state đã có data đầy đủ
+      this.lastPackPulled = sortedCards
+      this.currentPack = sortedCards
+    },
 
-      this.currentPack = pulledCards
-      this.isOpeningPack = true
+    /**
+     * Chuyển từ Phase 1 (Hiện Pack) sang Phase 2 (Hiện thẻ úp mặt)
+     * Được gọi khi người dùng click vào ảnh Pack
+     */
+    revealCards() {
+      this.packPhase = 'cards_visible'
     },
 
     /**
@@ -150,8 +191,9 @@ export const useInventoryStore = defineStore('inventory', {
     closePackOpening() {
       this.isOpeningPack = false
       this.currentPack = []
+      this.packPhase = 'idle'
+      this.currentPackId = null
 
-      // Auto-save after collecting cards
       const gameStore = useGameStore()
       gameStore.saveGame()
     },
