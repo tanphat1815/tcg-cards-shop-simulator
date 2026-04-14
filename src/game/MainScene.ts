@@ -52,6 +52,7 @@ export default class MainScene extends Phaser.Scene {
   public placementGraphics!: Phaser.GameObjects.Graphics
   private editOverlay!: Phaser.GameObjects.Graphics
   private editText!: Phaser.GameObjects.Text
+  private storeUnsubscribers: (() => void)[] = []
   private lastPlacementTime: number = 0
 
   private cursors!: {
@@ -154,6 +155,13 @@ export default class MainScene extends Phaser.Scene {
     // 11. Các tính năng mở rộng (Kéo camera, vẽ shop)
     this.setupCameraDrag()
     this.environmentManager.refreshEnvironment()
+
+    // 12. Cleanup on scene shutdown/destroy
+    this.events.once('shutdown', () => {
+      console.log("[MainScene] Shutting down, cleaning up store subscriptions...")
+      this.storeUnsubscribers.forEach(unsub => unsub())
+      this.storeUnsubscribers = []
+    })
   }
 
   /**
@@ -265,12 +273,13 @@ export default class MainScene extends Phaser.Scene {
   private setupStoreSubscriptions(gameStore: any) {
     const statsStore = useStatsStore()
     const customerStore = useCustomerStore()
+    const staffStore = useStaffStore()
 
     let lastExpansionLevel = statsStore.expansionLevel
     let lastSettings = JSON.stringify(statsStore.settings)
 
     // Theo dõi Cài đặt và Mở rộng diện tích
-    statsStore.$subscribe((_mutation, state) => {
+    const unsubStats = statsStore.$subscribe((_mutation, state) => {
       const currentSettings = JSON.stringify(state.settings)
       if (state.expansionLevel !== lastExpansionLevel || currentSettings !== lastSettings) {
         lastExpansionLevel = state.expansionLevel
@@ -280,12 +289,12 @@ export default class MainScene extends Phaser.Scene {
     })
 
     // Theo dõi thay đổi nhân sự (Thuê/Sa thải nhân viên)
-    useStaffStore().$subscribe(() => {
+    const unsubStaff = staffStore.$subscribe(() => {
       this.staffManager.syncWorkers()
     })
 
     // Lắng nghe shopState thay đổi (ví dụ: spawn NPC khi mở cửa)
-    customerStore.$subscribe((_mutation, state) => {
+    const unsubCustomer = customerStore.$subscribe((_mutation, state) => {
        // Refresh khi mở rộng hoặc thay đổi trạng thái shop
        if (state.shopState === 'OPEN') {
          // Thực hiện các logic khi mở cửa nếu cần
@@ -293,11 +302,14 @@ export default class MainScene extends Phaser.Scene {
     })
 
     // Theo dõi trạng thái kết thúc ngày (Xóa sạch NPC khách)
-    gameStore.$subscribe((_mutation: any, state: any) => {
+    const unsubGame = gameStore.$subscribe((_mutation: any, state: any) => {
       if (state.showEndDayModal) {
         this.npcManager.cleanupAllNPCs()
       }
     })
+
+    // CHỐT: Thu thập tất cả các hàm hủy đăng ký để dọn dẹp khi scene shutdown
+    this.storeUnsubscribers.push(unsubStats, unsubStaff, unsubCustomer, unsubGame)
   }
 
   /**

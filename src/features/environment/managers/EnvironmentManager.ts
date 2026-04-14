@@ -225,6 +225,11 @@ export class EnvironmentManager {
    * Thường được gọi bởi Store Subscription khi Expansion hoặc Settings thay đổi.
    */
   refreshEnvironment() {
+    // SAFETY CHECK: Tránh crash nếu scene chưa sẵn sàng hoặc đã bị hủy (Ghost Subscriptions)
+    if (!this.scene || !this.scene.cameras || !this.scene.cameras.main) {
+      return
+    }
+
     try {
       const store = useGameStore()
       const { extraW, extraH } = getExpansionDimensions(store.expansionLevel)
