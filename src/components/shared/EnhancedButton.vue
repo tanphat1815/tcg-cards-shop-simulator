@@ -25,7 +25,7 @@
     <span v-if="isLoading && loadingText" class="shrink-0">
       {{ loadingText }}
     </span>
-    <span v-else-if="!isLoading" class="shrink-0">
+    <span v-else-if="!isLoading && ($slots.default || defaultText)" class="shrink-0">
       <slot>{{ defaultText }}</slot>
     </span>
 
@@ -50,7 +50,7 @@ interface Props extends EnhancedButtonConfig {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  defaultText: 'Button'
+  defaultText: ''
 })
 
 const emit = defineEmits<{
@@ -77,11 +77,9 @@ const hasRightIcon = computed(() =>
 
 // Simple icon component resolver (you can expand this)
 const getIconComponent = (iconName: string) => {
-  // For demo purposes, return a simple span with emoji
-  // In real app, you would use a proper icon library
   const iconMap: Record<string, string> = {
     'check': '✅',
-    'close': '❌',
+    'close': '✕', // Mảnh khảnh hơn emoji ❌
     'search': '🔍',
     'settings': '⚙️',
     'user': '👤',
@@ -90,13 +88,18 @@ const getIconComponent = (iconName: string) => {
     'star': '⭐',
     'arrow-right': '→',
     'arrow-left': '←',
-    'plus': '➕',
-    'minus': '➖',
+    'plus': '＋',
+    'minus': '－',
+    'maximize': '🔳',
+    'minimize': '－',
     'edit': '✏️',
     'delete': '🗑️',
     'save': '💾',
     'download': '📥',
-    'upload': '📤'
+    'upload': '📤',
+    'info': 'ℹ️',
+    'help': '❓',
+    'warning': '⚠️'
   }
 
   return iconMap[iconName] || '❓'

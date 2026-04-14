@@ -1,18 +1,18 @@
 import Phaser from 'phaser'
-import { useGameStore } from '../stores/gameStore'
-import { useStatsStore } from '../stores/modules/statsStore'
-import { useShopStore } from '../stores/modules/shopStore'
-import { useStaffStore } from '../stores/modules/staffStore'
 import playerImg from '../assets/images/player.svg'
 import npcImg from '../assets/images/npc.svg'
 import shelfImg from '../assets/images/shelf.svg'
 import cashierImg from '../assets/images/cashier.svg'
-import { WORKERS, SPEED_TO_MS } from '../config/workerData'
-import { DEPTH } from '../config/renderConfigs'
-import { EnvironmentManager } from './managers/EnvironmentManager'
-import { FurnitureManager } from './managers/FurnitureManager'
-import { NPCManager } from './managers/NPCManager'
-import { StaffManager } from './managers/StaffManager'
+import { useGameStore } from '../features/shop-ui/store/gameStore'
+import { useStatsStore } from '../features/stats/store/statsStore'
+import { useCustomerStore } from '../features/customer/store/customerStore'
+import { useStaffStore } from '../features/staff/store/staffStore'
+import { WORKERS, SPEED_TO_MS } from '../features/staff/config'
+import { DEPTH } from '../features/environment/config'
+import { EnvironmentManager } from '../features/environment/managers/EnvironmentManager'
+import { FurnitureManager } from '../features/furniture/managers/FurnitureManager'
+import { NPCManager } from '../features/customer/managers/NPCManager'
+import { StaffManager } from '../features/staff/managers/StaffManager'
 
 /**
  * MainScene - Trái tim điều khiển (Orchestrator) của trò chơi trong Phaser.
@@ -144,7 +144,7 @@ export default class MainScene extends Phaser.Scene {
     this.time.addEvent({
       delay: 1000,
       callback: () => {
-        if (gameStore.shopState === 'OPEN') {
+        if (gameStore.shopState === 'OPEN' && !gameStore.isBuildMode && !gameStore.isEditMode) {
           gameStore.tickTime(1)
         }
       },
@@ -214,12 +214,6 @@ export default class MainScene extends Phaser.Scene {
         this.clearGhost()
       })
 
-      // Phím G để bật/tắt nhanh Debug Physics
-      this.input.keyboard.on('keydown-G', () => {
-        const statsStore = useStatsStore()
-        statsStore.settings.showDebugPhysics = !statsStore.settings.showDebugPhysics
-        this.updateDebugPhysics()
-      })
     }
   }
 
@@ -270,7 +264,7 @@ export default class MainScene extends Phaser.Scene {
    */
   private setupStoreSubscriptions(gameStore: any) {
     const statsStore = useStatsStore()
-    const shopStore = useShopStore()
+    const customerStore = useCustomerStore()
 
     let lastExpansionLevel = statsStore.expansionLevel
     let lastSettings = JSON.stringify(statsStore.settings)
@@ -291,7 +285,7 @@ export default class MainScene extends Phaser.Scene {
     })
 
     // Lắng nghe shopState thay đổi (ví dụ: spawn NPC khi mở cửa)
-    shopStore.$subscribe((_mutation, state) => {
+    customerStore.$subscribe((_mutation, state) => {
        // Refresh khi mở rộng hoặc thay đổi trạng thái shop
        if (state.shopState === 'OPEN') {
          // Thực hiện các logic khi mở cửa nếu cần
@@ -325,18 +319,20 @@ export default class MainScene extends Phaser.Scene {
 
     const store = useGameStore()
 
-    // 1. Cập nhật logic các Managers
-    this.npcManager.update()
-    this.furnitureManager.updateFurnitureVisuals()
-    this.staffManager.update(time)
+    // 1. Cập nhật logic các Managers (Tạm dừng khi đang Edit/Build)
+    if (!store.isBuildMode && !store.isEditMode) {
+      this.npcManager.update()
+      this.furnitureManager.updateFurnitureVisuals()
+      this.staffManager.update(time)
+
+      // 3. Xử lý nhân viên hỗ trợ thanh toán (Auto Checkout)
+      this.handleAutoCheckout(time)
+    }
 
     // 2. Xử lý tương tác nhấn phím E (Thanh toán/Quản lý kệ)
     if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
       this.handlePlayerInteraction(store)
     }
-
-    // 3. Xử lý nhân viên hỗ trợ thanh toán (Auto Checkout)
-    this.handleAutoCheckout(time)
 
     // 4. Phân luồng điều khiển: Chế độ Xây dựng/Chỉnh sửa vs Chế độ Di chuyển
     if (store.isBuildMode || store.isEditMode) {
@@ -434,16 +430,16 @@ export default class MainScene extends Phaser.Scene {
   }
 
   /**
-   * Tự động thanh toán nếu có nhân viên được phân công Duty 'CASHIER'.
+   * Tự động thanh toán nếu có nhân viên được phân công Duty 'CHECKOUT'.
    */
   private handleAutoCheckout(time: number) {
     const store = useGameStore()
     if (store.waitingCustomers <= 0) return
 
-    const cashier = store.hiredWorkers.find((w: any) => w.duty === 'CASHIER')
+    const cashier = store.hiredWorkers.find((w: any) => w.duty === 'CHECKOUT')
     if (!cashier) return
 
-    const workerData = WORKERS.find(w => w.id === cashier.workerId)
+    const workerData = WORKERS.find(w => w.id === cashier.dataId)
     if (!workerData) return
 
     const cooldown = SPEED_TO_MS[workerData.checkoutSpeed]
@@ -602,20 +598,6 @@ export default class MainScene extends Phaser.Scene {
       this.furnitureManager.shelvesGroup,
       this.furnitureManager.tablesGroup
     ]
-
-    // for (const group of obstacleGroups) {
-    //   group.getChildren().forEach(child => {
-    //     const sprite = child as any
-    //     if (useGameStore().editFurnitureData?.id === sprite.getData('id')) return
-        
-    //     const b = (child instanceof Phaser.Physics.Arcade.Sprite && sprite.texture.key === '') ? 
-    //               new Phaser.Geom.Rectangle(sprite.x - 30, sprite.y - 20, 60, 40) : 
-    //               sprite.getBounds()
-        
-    //     if (Phaser.Geom.Intersects.RectangleToRectangle(rect, b)) collided = true
-    //   })
-    //   if (collided) return false
-    // }
 
     for (const group of obstacleGroups) {
       const children = group.getChildren()

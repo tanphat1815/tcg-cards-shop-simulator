@@ -13,6 +13,7 @@
  * />
  */
 import BaseModal from './BaseModal.vue'
+import EnhancedButton from './EnhancedButton.vue'
 
 interface Props {
   isOpen: boolean
@@ -53,22 +54,20 @@ const emit = defineEmits<{
     </template>
 
     <template #footer>
-      <button
+      <EnhancedButton
+        variant="secondary"
+        size="md"
         @click="emit('cancel')"
-        class="px-6 py-2.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-bold transition-all hover:scale-105 active:scale-95"
       >
         {{ cancelText }}
-      </button>
-      <button
+      </EnhancedButton>
+      <EnhancedButton
+        :variant="isDangerous ? 'danger' : 'primary'"
+        size="md"
         @click="emit('confirm')"
-        class="px-6 py-2.5 rounded-lg text-white font-bold transition-all hover:scale-105 active:scale-95"
-        :class="isDangerous
-          ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600'
-          : `bg-gradient-to-r ${confirmClass} hover:opacity-80`
-        "
       >
         {{ confirmText }}
-      </button>
+      </EnhancedButton>
     </template>
   </BaseModal>
 </template>

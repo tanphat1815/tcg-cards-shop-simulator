@@ -3,7 +3,7 @@
  * Centralized service for all external API calls with error handling and caching.
  */
 
-import { API_CONFIG } from '../config/apiConfig'
+import { API_CONFIG } from '../features/inventory/config/apiConfig'
 import { getSet, getCard, getSerie } from './tcgdexService'
 
 interface ApiResponse<T> {

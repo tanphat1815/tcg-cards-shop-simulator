@@ -11,6 +11,7 @@
  * />
  */
 import BaseModal from './BaseModal.vue'
+import EnhancedButton from './EnhancedButton.vue'
 
 interface Props {
   isOpen: boolean
@@ -56,12 +57,14 @@ const typeConfig = {
     </template>
 
     <template #footer>
-      <button
+      <EnhancedButton
+        variant="primary"
+        size="md"
+        fullWidth
         @click="emit('close')"
-        class="w-full px-6 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-bold transition-all hover:scale-105 active:scale-95"
       >
         {{ buttonText }}
-      </button>
+      </EnhancedButton>
     </template>
   </BaseModal>
 </template>

@@ -7,6 +7,7 @@
  * - Custom loading text
  * - Tooltip support
  * - ARIA attributes
+ * - Reactivity support (khắc phục lỗi mất phản xạ khi destructuring props)
  */
 
 import { computed, type Ref } from 'vue'
@@ -29,6 +30,9 @@ export interface EnhancedButtonConfig {
   loadingText?: string
   tooltip?: string
   ariaLabel?: string
+  active?: boolean
+  square?: boolean // Nút hình vuông (width = height)
+  circle?: boolean // Nút hình tròn
 }
 
 export interface EnhancedButtonState {
@@ -42,17 +46,6 @@ export interface EnhancedButtonState {
 }
 
 export function useEnhancedButton(config: EnhancedButtonConfig = {}): EnhancedButtonState {
-  const {
-    variant = 'primary',
-    size = 'md',
-    disabled = false,
-    loading = false,
-    fullWidth = false,
-    icon,
-    tooltip,
-    ariaLabel
-  } = config
-
   // Base classes từ useButton gốc
   const baseClasses = 'font-bold uppercase tracking-wider transition-all transform hover:scale-105 active:scale-95 rounded-xl shadow-lg border flex items-center justify-center gap-2'
 
@@ -77,23 +70,47 @@ export function useEnhancedButton(config: EnhancedButtonConfig = {}): EnhancedBu
     xl: 'text-base py-4 px-8'
   }
 
-  // Computed properties
+  // Computed properties - Truy cập trực tiếp qua config để giữ tính phản xạ
   const classes = computed(() => {
-    let classList = [baseClasses, variantClasses[variant], sizeClasses[size]]
+    const v = config.variant || 'primary'
+    const s = config.size || 'md'
+    let classList = [baseClasses, variantClasses[v as keyof typeof variantClasses], sizeClasses[s as keyof typeof sizeClasses]]
 
-    if (fullWidth) classList.push('w-full')
-    if (disabled || loading) classList.push('opacity-50 cursor-not-allowed hover:scale-100')
+    if (config.fullWidth) classList.push('w-full')
+    if (config.disabled || config.loading) {
+      classList.push('opacity-50 cursor-not-allowed hover:scale-100')
+    }
+    
+    // Trạng thái active (dành cho Tab) - Nổi bật hơn
+    if (config.active) {
+      classList.push('ring-4 ring-white/30 border-white scale-[1.05] z-10 brightness-110 shadow-[0_0_20px_rgba(255,255,255,0.3)]')
+    }
+
+    // Square and Circle - Override padding and aspect ratio
+    if (config.square || config.circle) {
+      classList.push('p-0 flex items-center justify-center')
+      if (config.circle) classList.push('rounded-full')
+      
+      const sizeDimMap = {
+        xs: 'w-6 h-6',
+        sm: 'w-8 h-8',
+        md: 'w-10 h-10',
+        lg: 'w-12 h-12',
+        xl: 'w-14 h-14'
+      }
+      classList.push(sizeDimMap[s as keyof typeof sizeDimMap])
+    }
 
     return classList.join(' ')
   })
 
-  const isDisabled = computed(() => disabled || loading)
-  const isLoading = computed(() => loading)
-  const hasIcon = computed(() => !!icon)
+  const isDisabled = computed(() => !!(config.disabled || config.loading))
+  const isLoading = computed(() => !!config.loading)
+  const hasIcon = computed(() => !!config.icon)
 
   const iconClasses = computed(() => {
     const baseIconClasses = 'w-4 h-4'
-    return icon?.position === 'right' ? `${baseIconClasses} order-1` : baseIconClasses
+    return config.icon?.position === 'right' ? `${baseIconClasses} order-1` : baseIconClasses
   })
 
   const spinnerSize = computed(() => {
@@ -104,16 +121,16 @@ export function useEnhancedButton(config: EnhancedButtonConfig = {}): EnhancedBu
       lg: 'md',
       xl: 'lg'
     }
-    return sizeMap[size]
+    return sizeMap[config.size || 'md']
   })
 
   const ariaAttributes = computed(() => {
     const attrs: Record<string, string> = {}
 
-    if (ariaLabel) attrs['aria-label'] = ariaLabel
-    if (tooltip) attrs['title'] = tooltip
-    if (loading) attrs['aria-busy'] = 'true'
-    if (disabled) attrs['aria-disabled'] = 'true'
+    if (config.ariaLabel) attrs['aria-label'] = config.ariaLabel
+    if (config.tooltip) attrs['title'] = config.tooltip
+    if (config.loading) attrs['aria-busy'] = 'true'
+    if (config.disabled) attrs['aria-disabled'] = 'true'
 
     return attrs
   })
