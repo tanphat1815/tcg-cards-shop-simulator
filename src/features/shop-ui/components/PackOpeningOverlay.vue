@@ -18,8 +18,10 @@ import { useInventoryStore } from '../../inventory/store/inventoryStore'
 import { getPackVisuals } from '../../inventory/config/assetRegistry'
 import { isHighRarity } from '../../inventory/config/rarityRegistry'
 import TcgCard from '../../../components/shared/TcgCard.vue'
+import { useCardDetailStore } from '../../inventory/store/cardDetailStore'
 
 const inventoryStore = useInventoryStore()
+const detailStore = useCardDetailStore()
 
 // ─── UI-only state (không đưa vào Store) ───────────────────────────────────
 /** Mảng boolean: flipped[i] = true nếu lá bài thứ i đã lật */
@@ -336,6 +338,7 @@ onUnmounted(() => {
                 :card="card"
                 :is-flipped="flipped[index]"
                 :show-price="true"
+                @click="detailStore.openCard(card)"
               />
             </div>
           </div>

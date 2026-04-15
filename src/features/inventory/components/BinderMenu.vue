@@ -3,12 +3,14 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useGameStore } from '../../shop-ui/store/gameStore'
 import { useInventoryStore } from '../store/inventoryStore'
 import { useApiStore } from '../store/apiStore'
+import { useCardDetailStore } from '../store/cardDetailStore'
 import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
 import TcgCard from '../../../components/shared/TcgCard.vue'
 
 const gameStore = useGameStore()
 const inventoryStore = useInventoryStore()
 const apiStore = useApiStore()
+const detailStore = useCardDetailStore()
 
 const binderItems = computed(() => {
   return Object.keys(inventoryStore.personalBinder).map(cardId => {
@@ -129,6 +131,7 @@ onMounted(() => {
                   :quantity="item.quantity"
                   :show-price="true"
                   size="small"
+                  @click="detailStore.openCard(item.card)"
                 />
                 <div v-else class="card-loading-placeholder">
                   <div class="spinner"></div>
@@ -163,6 +166,7 @@ onMounted(() => {
                   :quantity="item.quantity"
                   :show-price="true"
                   size="small"
+                  @click="detailStore.openCard(item.card)"
                 />
                 <div v-else class="card-loading-placeholder">
                   <div class="spinner"></div>

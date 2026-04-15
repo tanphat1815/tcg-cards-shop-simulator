@@ -3,6 +3,8 @@ import { ref } from 'vue'
 
 import { isHighRarity, getRarityBadge } from '../../features/inventory/config/rarityRegistry'
 
+const emit = defineEmits(['click'])
+
 const props = defineProps<{
   card: any
   isFlipped?: boolean
@@ -39,7 +41,11 @@ function getMarketPrice(card: any): string {
 <template>
   <div class="tcg-card-wrapper" :class="{ 'is-small': size === 'small' }">
     <!-- Quantity Badge (External to 3D container to stay on top) -->
-    <div v-if="showQuantity && quantity !== undefined" class="quantity-badge">
+    <div 
+      v-if="showQuantity && quantity !== undefined" 
+      class="quantity-badge"
+      @click.stop="emit('click')"
+    >
       x{{ quantity }}
     </div>
 
@@ -49,8 +55,10 @@ function getMarketPrice(card: any): string {
         'is-flipped': isFlipped,
         'is-holo': (isHolo || isHighRarity(card)) && isFlipped,
         'is-hoverable': isFlipped,
-        'small-card': size === 'small'
+        'small-card': size === 'small',
+        'is-clickable': isFlipped
       }"
+      @click="isFlipped && emit('click')"
     >
       <!-- BACK SIDE -->
       <div class="card-face card-back">
@@ -160,6 +168,10 @@ function getMarketPrice(card: any): string {
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+}
+
+.is-clickable {
+  cursor: pointer;
 }
 
 .card-back {
