@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useCardDetailStore } from '../../inventory/store/cardDetailStore'
-import Interactive3DCard from '../../shared/components/Interactive3DCard.vue'
-import { getRarityBadge, isHighRarity } from '../../inventory/config/rarityRegistry'
+import PokemonCard3D from '../../shared/components/PokemonCard3D.vue'
+import { getRarityBadge } from '../../inventory/config/rarityRegistry'
 
 const store = useCardDetailStore()
 const showRawJson = ref(false)
@@ -55,13 +55,13 @@ function getMarketPrice(card: any): string {
       <button class="close-header-btn" @click="close">×</button>
 
       <div class="detail-contentContainer">
-        <!-- LEFT: VISUAL -->
+        <!-- LEFT: VISUAL (Holographic 3D) -->
+        <!-- [x] Phát triển component PokemonCard3D.vue (Vanilla JS High-perf) -->
+        <!-- [x] Tích hợp PokemonCard3D vào CardDetailOverlay -->
         <div class="visual-column">
-          <Interactive3DCard 
-            :image-src="`${card.image}/high.webp`" 
-            :is-holo="isHighRarity(card)"
+          <PokemonCard3D 
+            :card="card"
           />
-          <div class="hint">Rê chuột để khám phá hiệu ứng 3D</div>
         </div>
 
         <!-- RIGHT: INFO PANEL -->

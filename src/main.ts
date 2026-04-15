@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import './style.css'
 import './styles/globals.css'
 import './styles/components.css'
+import './assets/styles/pokemon-cards.css'
 import App from './App.vue'
 
 const app = createApp(App)

@@ -17,7 +17,7 @@ import { ref, computed, watch, onUnmounted, reactive } from 'vue'
 import { useInventoryStore } from '../../inventory/store/inventoryStore'
 import { getPackVisuals } from '../../inventory/config/assetRegistry'
 import { isHighRarity } from '../../inventory/config/rarityRegistry'
-import TcgCard from '../../../components/shared/TcgCard.vue'
+import PokemonCard3D from '../../shared/components/PokemonCard3D.vue'
 import { useCardDetailStore } from '../../inventory/store/cardDetailStore'
 
 const inventoryStore = useInventoryStore()
@@ -263,6 +263,12 @@ function playRareSound() {
   } catch { /* ignore */ }
 }
 
+// Helpers for rendering
+function getMarketPrice(card: any): string {
+  const price = card?.pricing?.tcgplayer?.normal?.marketPrice ?? card?.pricing?.cardmarket?.avg ?? 'N/A';
+  return price !== 'N/A' ? `$${Number(price).toFixed(2)}` : 'N/A';
+}
+
 // ─── Cleanup ─────────────────────────────────────────────────────────────────
 onUnmounted(() => {
   stopAutoReveal()
@@ -331,15 +337,16 @@ onUnmounted(() => {
             <div
               v-for="(card, index) in cards"
               :key="index"
-              class="card-slot"
-              @click="flipCard(index)"
+              class="card-slot gacha-card"
+              @click="flipped[index] ? detailStore.openCard(card) : flipCard(index)"
             >
-              <TcgCard
+              <PokemonCard3D
                 :card="card"
-                :is-flipped="flipped[index]"
-                :show-price="true"
-                @click="detailStore.openCard(card)"
+                :is-back="!flipped[index]"
               />
+              <div v-if="flipped[index]" class="card-price-tag">
+                {{ getMarketPrice(card) }}
+              </div>
             </div>
           </div>
 
@@ -603,9 +610,24 @@ onUnmounted(() => {
 
 .card-slot {
   flex: 0 1 auto;
-  /* Thẻ bài tự co giãn từ 150px đến 230px dựa trên chiều rộng màn hình (14vw) */
   width: clamp(150px, 14vw, 230px);
   cursor: pointer;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-price-tag {
+  background: rgba(0, 0, 0, 0.7);
+  color: #34d399;
+  font-weight: 900;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(52, 211, 153, 0.3);
 }
 
 
