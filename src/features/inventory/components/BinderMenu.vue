@@ -93,7 +93,7 @@ onMounted(() => {
           <div class="flex-grow my-1.5 bg-gradient-to-br from-white/60 to-white/20 rounded-sm shadow-inner border border-white/50 flex items-center justify-center overflow-hidden">
             <img 
               v-if="item.card!.image" 
-              :src="item.card!.image + '/low.webp'" 
+              :src="item.card!.image + '/high.webp'" 
               :alt="item.card!.name" 
               class="w-full h-full object-cover rounded"
             />

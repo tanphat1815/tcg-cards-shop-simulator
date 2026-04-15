@@ -39,6 +39,8 @@ export const useInventoryStore = defineStore('inventory', {
 
     /** ID của pack đang được hiển thị (để lấy ảnh booster) */
     currentPackId: null as string | null,
+    /** ID của set đang được hiển thị */
+    currentPackSetId: null as string | null,
   }),
   actions: {
     /**
@@ -114,6 +116,7 @@ export const useInventoryStore = defineStore('inventory', {
       // --- UI IMPROVEMENT: Hiện Pack ngay lập tức để người dùng thấy animation rung ---
       this.currentPack = [] // Clear old cards
       this.currentPackId = packId
+      this.currentPackSetId = setId
       this.isOpeningPack = true
       this.packPhase = 'pack_visible'
 

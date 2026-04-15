@@ -14,6 +14,10 @@ interface ApiResponse<T> {
 export interface TcgSetSummary {
   id: string
   name: string
+  serie?: {
+    id: string
+    name: string
+  }
   cardCount?: {
     total: number
     official: number
@@ -62,14 +66,28 @@ export interface TcgSet {
 
 export interface TcgCard {
   id: string
+  localId?: string
   name: string
+  image?: string
+  category?: string // Pokemon, Trainer, Energy
+  illustrator?: string
+  rarity?: string
   hp?: number
   types?: string[]
-  weaknesses?: Array<{ type: string; value: string }>
-  attacks?: Array<{ name: string; damage: string }>
-  rarity?: string
+  stage?: string
+  evolveFrom?: string
   images?: { small?: string; large?: string }
-  image?: string
+  attacks?: Array<{
+    cost: string[]
+    name: string
+    damage?: string | number
+    effect?: string
+  }>
+  weaknesses?: Array<{
+    type: string
+    value: string
+  }>
+  retreat?: number
   pricing?: {
     cardmarket?: {
       updated?: string
@@ -325,6 +343,7 @@ class ApiService {
       id: summary.id,
       name: summary.name,
       image: summary.image || '',
+      localId: summary.localId || '',
     }))
 
     return { data: cards }

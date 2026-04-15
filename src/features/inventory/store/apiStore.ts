@@ -1,19 +1,48 @@
 import { defineStore } from 'pinia'
 import { useInventoryStore } from './inventoryStore'
-import type { StockItemInfo } from '../config'
+import { useStatsStore } from '../../stats/store/statsStore'
+import { useStaffStore } from '../../staff/store/staffStore'
+import { STOCK_ITEMS, type StockItemInfo, SET_BLACKLIST } from '../config'
 import { apiService, type TcgSetSummary } from '../../../services/apiService'
+
+const API_CACHE_VERSION = 'v3'
 
 const sanitizeId = (source: string) => source.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
 
-const createRequiredLevel = (index: number, cardCount?: number, releasedAt?: string) => {
-  const yearMatch = typeof releasedAt === 'string' ? releasedAt.match(/(\d{4})/) : null
-  const year = yearMatch ? Number(yearMatch[1]) : undefined
+/**
+ * Quy định Level mở khóa dựa trên Series ID chuẩn TCGdex
+ */
+const getRequiredLevel = (seriesId: string): number => {
+  const mapping: Record<string, number> = {
+    'base': 1, 'gym': 1, 'neo': 1, 'lc': 1, 'ecard': 1, // Gen 1
+    'ex': 11, // Gen 3
+    'dp': 21, 'pl': 21, 'hgss': 21, 'col': 21, // Gen 4
+    'bw': 31, // Gen 5
+    'xy': 41, // Gen 6
+    'sm': 51, // Gen 7
+    'swsh': 61, // Gen 8
+    'sv': 71, // Gen 9
+    'tcgp': 80, 'me': 80, 'misc': 80, 'pop': 80, 'tk': 80, 'mc': 80 // Special
+  }
+  return mapping[seriesId] || 80
+}
 
-  if (cardCount && cardCount <= 60) return 1
-  if (year && year <= 2018) return 1
-
-  const requiredLevels = [1, 3, 5, 7, 10, 12, 14, 16, 18, 20]
-  return requiredLevels[Math.min(index, requiredLevels.length - 1)]
+/**
+ * Ánh xạ Series ID sang Tên Thế hệ hiển thị
+ */
+const getGenerationName = (seriesId: string): string => {
+  const names: Record<string, string> = {
+    'base': 'GENERATION I', 'gym': 'GENERATION I', 'neo': 'GENERATION I', 'lc': 'GENERATION I', 'ecard': 'GENERATION I',
+    'ex': 'GENERATION III',
+    'dp': 'GENERATION IV', 'pl': 'GENERATION IV', 'hgss': 'GENERATION IV', 'col': 'GENERATION IV',
+    'bw': 'GENERATION V',
+    'xy': 'GENERATION VI',
+    'sm': 'GENERATION VII',
+    'swsh': 'GENERATION VIII',
+    'sv': 'GENERATION IX',
+    'tcgp': 'SPECIAL COLLECTIONS'
+  }
+  return names[seriesId] || 'OTHER SERIES'
 }
 
 const buildPrice = (value: number) => Number(value.toFixed(2))
@@ -33,27 +62,43 @@ export const useApiStore = defineStore('api', {
     })
   },
   actions: {
-    async initSeriesShop(seriesId = 'swsh') {
+    async initSeriesShop() {
       // 1. First try to load from LocalStorage to avoid UI blink
       this.loadFromStorage()
 
-      if (this.sets.length > 0) {
-        // We already have data, but we might want to refresh metadata merge
+      if (Object.keys(this.shopItems).length > 0) {
         this.mergeShopItemsIntoInventory()
         return
       }
 
-      await this.loadSeriesSets(seriesId)
-      if (this.sets.length > 0) {
+      // 2. Load all main series to build a full shop catalog
+      const mainSeries = ['base', 'ex', 'dp', 'bw', 'xy', 'sm', 'swsh', 'sv']
+      this.isLoading = true
+
+      try {
+        console.log('[ApiStore] Starting full shop initialization...')
+        this.sets = [] // Reset sets before loading all series
+        for (const sId of mainSeries) {
+          console.log(`[ApiStore] Fetching series: ${sId}`)
+          await this.loadSeriesSets(sId)
+        }
+        
+        console.log(`[ApiStore] Loading complete. Total sets found: ${this.sets.length}`)
         this.shopItems = this.generateShopItemsFromSets(this.sets)
         this.mergeShopItemsIntoInventory()
         this.saveToStorage()
+      } catch (e) {
+        this.error = 'Failed to initialize Online Shop data'
+        console.error(e)
+      } finally {
+        this.isLoading = false
       }
     },
 
     saveToStorage() {
       try {
         const data = {
+          version: API_CACHE_VERSION,
           sets: this.sets,
           shopItems: this.shopItems,
           setCardsCache: this.setCardsCache
@@ -69,6 +114,14 @@ export const useApiStore = defineStore('api', {
         const saved = localStorage.getItem('tcg-shop-api-cache')
         if (saved) {
           const parsed = JSON.parse(saved)
+          
+          // Check version mismatch - Invalidate if old
+          if (parsed.version !== API_CACHE_VERSION) {
+            console.warn(`[ApiStore] Cache version mismatch (${parsed.version} vs ${API_CACHE_VERSION}). Clearing cache...`)
+            localStorage.removeItem('tcg-shop-api-cache')
+            return
+          }
+
           this.sets = parsed.sets || []
           this.shopItems = parsed.shopItems || {}
           this.setCardsCache = parsed.setCardsCache || {}
@@ -88,13 +141,16 @@ export const useApiStore = defineStore('api', {
       if (result.error) {
         this.error = result.error
       } else if (result.data) {
-        this.sets = result.data.map((set: any) => ({
+        const mappedSets = result.data.map((set: any) => ({
           id: set.id,
           name: set.name,
+          // Đảm bảo có serie info, nếu API không trả về thì dùng seriesId truyền vào
+          serie: set.serie || { id: seriesId, name: seriesId.toUpperCase() },
           cardCount: set.cardCount,
           releasedAt: set.releasedAt || set.releaseDate || set.released_at,
           boosters: Array.isArray(set.boosters) ? set.boosters : []
         }))
+        this.sets.push(...mappedSets)
       }
 
       this.isLoading = false
@@ -102,15 +158,25 @@ export const useApiStore = defineStore('api', {
 
     generateShopItemsFromSets(sets: TcgSetSummary[]) {
       const items: Record<string, StockItemInfo> = {}
+      
       sets.forEach((set, index) => {
+        // Skip blacklisted sets
+        if (SET_BLACKLIST.includes(set.id)) {
+          console.log(`[ApiStore] Skipping blacklisted set: ${set.id} (${set.name})`)
+          return
+        }
+
         const slug = sanitizeId(set.id || set.name || `set_${index}`)
         const boxId = `box_${slug}`
         const packId = `pack_${slug}`
+        
+        const seriesId = set.serie?.id || 'misc'
+        const generation = getGenerationName(seriesId)
+        const requiredLevel = getRequiredLevel(seriesId)
+
         const boxPrice = buildPrice(40 + Math.random() * 20)
         const packPrice = buildPrice(boxPrice / 32)
-        const requiredLevel = createRequiredLevel(index, set.cardCount?.total || 0, set.releasedAt)
 
-        // Store original API set ID for pack opening
         const sourceSetId = set.id || slug
 
         items[packId] = {
@@ -121,21 +187,23 @@ export const useApiStore = defineStore('api', {
           requiredLevel,
           type: 'pack',
           volume: 1,
-          description: `Pack của bộ ${set.name}. Mở ra 5 thẻ bài ngẫu nhiên từ set.`,
-          sourceSetId // Store original set ID
+          description: `Pack của bộ ${set.name}. Thế hệ: ${generation}.`,
+          sourceSetId,
+          generation
         }
 
         items[boxId] = {
           id: boxId,
-          name: `${set.name} Booster Box (32 Packs)`,
-          buyPrice: boxPrice,
-          sellPrice: buildPrice(boxPrice * 1.4),
-          requiredLevel: Math.max(requiredLevel, 3),
+          name: `${set.name} Booster Box (64 Packs)`,
+          buyPrice: buildPrice(packPrice * 64 * 0.85), // Chiết khấu sỉ
+          sellPrice: buildPrice(packPrice * 64 * 1.4),
+          requiredLevel: Math.max(requiredLevel, 5),
           type: 'box',
-          volume: 8,
-          contains: { itemId: packId, amount: 32 },
-          description: `Hộp ${set.name} gồm 32 Booster Pack. Giá tốt để nhập số lượng lớn.`,
-          sourceSetId // Store original set ID
+          volume: 16,
+          contains: { itemId: packId, amount: 64 },
+          description: `Hộp ${set.name} gồm 64 Booster Pack. Giá sỉ cực tốt.`,
+          sourceSetId,
+          generation
         }
       })
       return items

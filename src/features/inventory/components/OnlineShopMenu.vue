@@ -9,6 +9,7 @@ import { FURNITURE_ITEMS } from '../../furniture/config'
 import { WORKERS } from '../../staff/config'
 import { EXPANSIONS_LOT_A } from '../../environment/config'
 import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import { getPackVisuals, getBoxVisuals, hasCustomVisual } from '../config/assetRegistry'
 
 const gameStore = useGameStore()
 const statsStore = useStatsStore()
@@ -25,20 +26,40 @@ const tabs = [
   { id: 'RENO', label: 'Cải Tạo', icon: 'plus' }
 ] as const
 
-const shopItems = computed(() => {
-  return Object.values(inventoryStore.shopItems)
-    .sort((a, b) => {
-      if (a.requiredLevel !== b.requiredLevel) return a.requiredLevel - b.requiredLevel
-      return a.name.localeCompare(b.name)
-    })
+const groupedShopItems = computed(() => {
+  const items = Object.values(inventoryStore.shopItems)
+  const groups: Record<string, any[]> = {}
+  
+  // Sort items first by required level and name
+  const sorted = items.sort((a, b) => {
+    if (a.requiredLevel !== b.requiredLevel) return a.requiredLevel - b.requiredLevel
+    return a.name.localeCompare(b.name)
+  })
+
+  // Group by generation
+  sorted.forEach(item => {
+    // Robust mapping fallback
+    const gen = item.generation || 'OTHER SERIES'
+    if (!groups[gen]) groups[gen] = []
+    groups[gen].push(item)
+  })
+  
+  return groups
 })
+
+const scrollToGen = (genName: string) => {
+  const element = document.getElementById(`gen-${genName.replace(/\s+/g, '-').toLowerCase()}`)
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
 
 const isShopLoading = computed(() => apiStore.isLoading)
 const shopError = computed(() => apiStore.error)
 
 watch(() => gameStore.showOnlineShop, (opened) => {
   if (opened) {
-    apiStore.initSeriesShop('swsh')
+    apiStore.initSeriesShop()
   }
 })
 
@@ -146,58 +167,115 @@ const getWorkerData = (id: string) => WORKERS.find((w: any) => w.id === id)
           <div v-if="shopError" class="rounded-2xl bg-red-50 border border-red-200 p-6 text-center text-red-700">
             Lỗi tải shop API: {{ shopError }}
           </div>
-          <div v-if="!isShopLoading && shopItems.length === 0" class="rounded-2xl bg-white/90 border border-gray-200 p-6 text-center text-gray-700">
-            Chưa có mặt hàng nào. Kiểm tra lại kết nối API hoặc tải lại cửa hàng.
+          <!-- Table of Contents (Sticky Navigation) -->
+          <div v-if="!isShopLoading && Object.keys(groupedShopItems).length > 1" class="sticky -top-8 z-30 bg-white/95 backdrop-blur-sm py-3 px-8 -mx-8 mb-6 border-b border-gray-200 shadow-sm flex items-center gap-4">
+            <span class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] whitespace-nowrap border-r border-slate-200 pr-4">Jump to</span>
+            <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-grow py-1">
+              <button 
+                v-for="genName in Object.keys(groupedShopItems)" 
+                :key="genName"
+                @click="scrollToGen(genName)"
+                class="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100 text-[10px] font-bold text-slate-500 hover:bg-white hover:border-indigo-400 hover:text-indigo-600 hover:shadow-md transition-all whitespace-nowrap"
+              >
+                {{ genName }}
+              </button>
+            </div>
           </div>
-          <div v-if="!isShopLoading && shopItems.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+
+          <div v-if="!isShopLoading && Object.keys(groupedShopItems).length > 0" class="space-y-12">
             <div 
-              v-for="item in shopItems" 
-              :key="item.id"
-              class="bg-white rounded-xl overflow-hidden shadow-md border border-gray-200 relative group flex flex-col"
+              v-for="(group, genName) in groupedShopItems" 
+              :key="genName" 
+              :id="`gen-${genName.replace(/\s+/g, '-').toLowerCase()}`"
+              class="shop-gen-section scroll-mt-24"
             >
-              <!-- Lock Overlay if Level not met -->
-              <div v-if="statsStore.level < item.requiredLevel" class="absolute inset-0 bg-gray-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
-                <span class="text-4xl mb-2">🔒</span>
-                <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-sm shadow-xl border-2 border-red-800">
-                  Unlock at Level {{ item.requiredLevel }}
-                </div>
+              <!-- Generation Header -->
+              <div class="flex items-center gap-4 mb-6">
+                <div class="h-8 w-1.5 bg-indigo-600 rounded-full"></div>
+                <h2 class="text-2xl font-black text-slate-800 tracking-tight">{{ genName }}</h2>
+                <div class="flex-grow h-[1px] bg-slate-200"></div>
               </div>
 
-              <div class="h-40 bg-gradient-to-br from-indigo-100 to-white flex items-center justify-center p-4 border-b border-gray-100" :class="{ 'grayscale blur-[1px]': statsStore.level < item.requiredLevel }">
-                 <div class="text-[80px] drop-shadow-xl transform group-hover:scale-110 transition-transform">
-                   🎁
-                 </div>
-              </div>
-              <div class="p-5 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': statsStore.level < item.requiredLevel }">
-                <div class="flex justify-between items-start mb-2">
-                  <h3 class="font-bold text-gray-900 text-lg leading-tight">{{ item.name }}</h3>
-                  <span v-if="inventoryStore.shopInventory[item.id]" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-200">
-                    Có: {{ inventoryStore.shopInventory[item.id] }}
-                  </span>
-                </div>
-                <p class="text-xs text-gray-500 mb-4 line-clamp-2 h-8">{{ item.description }}</p>
-                
-                <div class="mt-auto bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
-                   <div class="flex justify-between text-sm mb-1">
-                     <span class="text-gray-500">Giá nhập (Cost):</span>
-                     <span class="font-bold text-gray-800">${{ item.buyPrice }}</span>
-                   </div>
-                   <div class="flex justify-between text-sm">
-                     <span class="text-gray-500">Giá bán dự kiến:</span>
-                     <span class="font-bold text-green-600">${{ item.sellPrice }}</span>
-                   </div>
-                </div>
-
-                <EnhancedButton 
-                  variant="primary"
-                  size="md"
-                  fullWidth
-                  :disabled="statsStore.level < item.requiredLevel"
-                  :icon="{ name: 'cart', position: 'left' }"
-                  @click="purchaseStock(item.id, item.buyPrice)"
+              <!-- Items Grid for this Generation -->
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <div 
+                  v-for="item in group" 
+                  :key="item.id"
+                  class="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200 relative group flex flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
                 >
-                  Nhập Ngay (${{ item.buyPrice }})
-                </EnhancedButton>
+                  <!-- Lock Overlay -->
+                  <div v-if="statsStore.level < item.requiredLevel" class="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
+                    <span class="text-4xl mb-2">🔒</span>
+                    <div class="bg-red-600 text-white font-bold px-4 py-1.5 rounded-full uppercase tracking-widest text-xs shadow-xl border-2 border-red-800">
+                      Lvl {{ item.requiredLevel }}
+                    </div>
+                  </div>
+
+                  <!-- Product Image / Icon Area -->
+                  <div class="h-32 bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden" :class="{ 'grayscale blur-[1px]': statsStore.level < item.requiredLevel }">
+                    <div class="absolute -right-4 -bottom-4 text-7xl opacity-5 group-hover:scale-150 transition-transform duration-700 pointer-events-none">
+                      {{ item.type === 'box' ? '📦' : '✨' }}
+                    </div>
+                    
+                    <!-- Real Image from Registry -->
+                    <template v-if="hasCustomVisual(item.type, item.id)">
+                      <img 
+                        :src="item.type === 'pack' ? getPackVisuals(item.id).front : getBoxVisuals(item.id).front" 
+                        class="h-full w-auto object-contain drop-shadow-xl transform group-hover:scale-110 transition-transform duration-500 z-10"
+                        :alt="item.name"
+                        @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"
+                      />
+                    </template>
+
+                    <!-- Fallback Icon if no image or error -->
+                    <div v-else class="text-6xl drop-shadow-lg transform group-hover:scale-110 transition-transform duration-500 z-10">
+                      {{ item.type === 'box' ? '📦' : '🎁' }}
+                    </div>
+                    
+                    <!-- Type Badge -->
+                    <div class="absolute top-3 left-3 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tighter"
+                      :class="item.type === 'box' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-blue-100 text-blue-700 border border-blue-200'"
+                    >
+                      {{ item.type }}
+                    </div>
+                  </div>
+
+                  <!-- Product Info -->
+                  <div class="p-4 flex flex-col flex-grow" :class="{ 'grayscale opacity-70': statsStore.level < item.requiredLevel }">
+                    <div class="flex justify-between items-start mb-1">
+                      <h3 class="font-bold text-slate-900 text-sm leading-tight group-hover:text-indigo-600 transition-colors">{{ item.name }}</h3>
+                    </div>
+                    <div class="flex items-center gap-2 mb-3">
+                      <span v-if="inventoryStore.shopInventory[item.id]" class="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-100">
+                        In Stock: {{ inventoryStore.shopInventory[item.id] }}
+                      </span>
+                    </div>
+
+                    <!-- Pricing Info -->
+                    <div class="bg-slate-50 rounded-lg p-2.5 mb-4 border border-slate-100 space-y-1">
+                      <div class="flex justify-between items-center">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Input Price</span>
+                        <span class="text-sm font-black text-slate-700">${{ item.buyPrice }}</span>
+                      </div>
+                      <div class="flex justify-between items-center">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Retail Goal</span>
+                        <span class="text-sm font-black text-indigo-600">${{ item.sellPrice }}</span>
+                      </div>
+                    </div>
+
+                    <EnhancedButton 
+                      variant="primary"
+                      size="sm"
+                      fullWidth
+                      :disabled="statsStore.level < item.requiredLevel"
+                      :icon="{ name: 'cart', position: 'left' }"
+                      @click="purchaseStock(item.id, item.buyPrice)"
+                      class="shadow-indigo-500/20"
+                    >
+                      BUY (${{ item.buyPrice }})
+                    </EnhancedButton>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -460,4 +538,12 @@ const getWorkerData = (id: string) => WORKERS.find((w: any) => w.id === id)
 .custom-scroll::-webkit-scrollbar-track { background: #f3f4f6; }
 .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 </style>

@@ -1,3 +1,171 @@
+# PACK_OPENING_UPGRADE_GUIDE.md
+## Hướng dẫn Nâng cấp Tính năng Mở Pack (Gacha Unboxing)
+
+**Phiên bản:** 1.0  
+**Ngày soạn:** 2026-04-14  
+**Mục tiêu:** Nâng cấp toàn diện `PackOpeningOverlay.vue` và các Store liên quan để tạo trải nghiệm Gacha rực rỡ, đúng chuẩn TCG.
+
+---
+
+## ⚠️ NGUYÊN TẮC BẮT BUỘC TRƯỚC KHI BẮT ĐẦU
+
+1. **Logic → Store, UI → Component**: Mọi tính toán, xử lý dữ liệu API, sắp xếp thứ tự thẻ bài phải nằm trong Pinia Store. Component chỉ nhận dữ liệu và render.
+2. **KHÔNG xóa file cũ ngay**: Tạo bản mới, test pass rồi mới thay thế.
+3. **Chạy `npm run build` sau mỗi bước lớn** để kiểm tra lỗi TypeScript.
+
+---
+
+## 📁 DANH SÁCH FILE CẦN THAY ĐỔI
+
+| File | Hành động | Mức độ thay đổi |
+|------|-----------|-----------------|
+| `src/features/inventory/store/inventoryStore.ts` | Sửa | Trung bình |
+| `src/features/shop-ui/components/PackOpeningOverlay.vue` | Viết lại hoàn toàn | Lớn |
+
+> **Không cần tạo file mới**, không cần sửa bất kỳ file nào khác.
+
+---
+
+## BƯỚC 1: Sửa `inventoryStore.ts`
+
+**Vị trí file:** `src/features/inventory/store/inventoryStore.ts`
+
+### 1.1 Sửa State — Thêm trường `packPhase`
+
+Tìm khối `state: () => ({` và **thêm** dòng sau vào cuối khối state (trước dấu `}`):
+
+```typescript
+// Thêm vào sau dòng `lastPackPulled: [] as any[]`
+
+/** Phase của UI mở pack: 'idle' | 'pack_visible' | 'cards_visible' */
+packPhase: 'idle' as 'idle' | 'pack_visible' | 'cards_visible',
+
+/** ID của pack đang được hiển thị (để lấy ảnh booster) */
+currentPackId: null as string | null,
+```
+
+### 1.2 Sửa Action `tearPack` — Lưu đầy đủ dữ liệu card + sắp xếp thứ tự Gacha
+
+Tìm hàm `async tearPack(packId: string)` và **thay thế toàn bộ hàm** bằng code sau:
+
+```typescript
+async tearPack(packId: string) {
+  const statsStore = useStatsStore()
+  const apiStore = useApiStore()
+
+  if (!this.shopInventory[packId] || this.shopInventory[packId] <= 0) return
+
+  const packItem = apiStore.shopItems[packId]
+  if (!packItem) {
+    console.error(`Pack item not found: ${packId}`)
+    return
+  }
+
+  const setId = packItem.sourceSetId || packId.replace('pack_', '')
+
+  // Lấy 6 thẻ ngẫu nhiên có trọng số từ API
+  const randomCardsResult = await apiStore.getWeightedRandomCardsFromSet(setId, 6)
+
+  if (!randomCardsResult || randomCardsResult.length === 0) {
+    console.error('Failed to get random cards from set:', setId)
+    return
+  }
+
+  // --- RARITY SORT: Đảm bảo thẻ hiếm nhất luôn ở VỊ TRÍ CUỐI (index 5) ---
+  const RARITY_RANK: Record<string, number> = {
+    'Ghost Rare': 7,
+    'Hyper Secret Rare': 6,
+    'Mega Secret Rare': 6,
+    'Special Illustration Rare': 5,
+    'Illustration Rare': 4,
+    'Secret Rare': 3,
+    'Ultra Rare': 3,
+    'Double Rare': 2,
+    'Rare': 2,
+    'Uncommon': 1,
+    'Common': 0,
+    'None': 0,
+  }
+
+  const getRarityRank = (card: any): number => {
+    return RARITY_RANK[card.rarity] ?? 0
+  }
+
+  // Tách thẻ hiếm nhất ra, đặt ở cuối
+  let sortedCards = [...randomCardsResult]
+  sortedCards.sort((a, b) => getRarityRank(a) - getRarityRank(b))
+  // index 0-4: thẻ thường, index 5: thẻ hiếm nhất
+
+  // Trừ kho hàng
+  this.shopInventory[packId]--
+  if (this.shopInventory[packId] === 0) delete this.shopInventory[packId]
+
+  // --- LƯU ĐẦY ĐỦ dữ liệu vào personalBinder ---
+  // personalBinder lưu dạng: { cardId: { quantity, cardData } }
+  // Thay đổi cấu trúc: lưu cả object card để dùng cho Battle sau này
+  for (const card of sortedCards) {
+    if (!this.personalBinder[card.id]) {
+      this.personalBinder[card.id] = 0
+    }
+    this.personalBinder[card.id]++
+
+    // Thưởng XP
+    const rank = getRarityRank(card)
+    if (rank >= 2) {
+      statsStore.gainExp(XP_REWARDS.OPEN_PACK_RARE)
+    } else {
+      statsStore.gainExp(XP_REWARDS.OPEN_PACK_COMMON)
+    }
+  }
+
+  // Cập nhật state để UI render
+  this.lastPackPulled = sortedCards
+  this.currentPack = sortedCards
+  this.currentPackId = packId
+  this.isOpeningPack = true
+  this.packPhase = 'pack_visible' // Phase 1: Hiển thị ảnh Pack
+},
+```
+
+### 1.3 Thêm Action `revealCards` — Chuyển từ Phase 1 sang Phase 2
+
+Tìm action `closePackOpening()` và **thêm action mới ngay phía trước nó**:
+
+```typescript
+/**
+ * Chuyển từ Phase 1 (Hiện Pack) sang Phase 2 (Hiện thẻ úp mặt)
+ * Được gọi khi người dùng click vào ảnh Pack
+ */
+revealCards() {
+  this.packPhase = 'cards_visible'
+},
+```
+
+### 1.4 Sửa Action `closePackOpening` — Reset `packPhase` và `currentPackId`
+
+Tìm hàm `closePackOpening()` và **thay thế toàn bộ** bằng:
+
+```typescript
+closePackOpening() {
+  this.isOpeningPack = false
+  this.currentPack = []
+  this.packPhase = 'idle'
+  this.currentPackId = null
+
+  const gameStore = useGameStore()
+  gameStore.saveGame()
+},
+```
+
+---
+
+## BƯỚC 2: Viết lại hoàn toàn `PackOpeningOverlay.vue`
+
+**Vị trí file:** `src/features/shop-ui/components/PackOpeningOverlay.vue`
+
+**Thay thế TOÀN BỘ nội dung file** bằng code dưới đây:
+
+```vue
 <script setup lang="ts">
 /**
  * PackOpeningOverlay.vue — Giao diện Gacha mở pack thẻ bài
@@ -15,7 +183,6 @@
  */
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useInventoryStore } from '../../inventory/store/inventoryStore'
-import { getPackVisuals, getCardBackUrl } from '../../inventory/config/assetRegistry'
 
 const inventoryStore = useInventoryStore()
 
@@ -32,9 +199,6 @@ const isAutoRevealing = ref(false)
 /** Timer ID của Auto-Reveal để có thể cancel */
 let autoRevealTimer: ReturnType<typeof setInterval> | null = null
 
-/** Theo dõi trạng thái đã tải xong ảnh của từng card: imageLoaded[index] = true */
-const imageLoaded = ref<boolean[]>([])
-
 // ─── Computed ───────────────────────────────────────────────────────────────
 
 /** Danh sách thẻ bài hiện tại (đã được Store sắp xếp: thẻ hiếm nhất ở index 5) */
@@ -44,10 +208,7 @@ const cards = computed(() => inventoryStore.currentPack)
 const phase = computed(() => inventoryStore.packPhase)
 
 /** Tất cả thẻ đã được lật chưa */
-const allFlipped = computed(() => {
-  const count = cards.value.length
-  return count > 0 && flipped.value.length === count && flipped.value.every(Boolean)
-})
+const allFlipped = computed(() => flipped.value.length === 6 && flipped.value.every(Boolean))
 
 /** Đang hiển thị overlay không */
 const isVisible = computed(() => inventoryStore.isOpeningPack)
@@ -58,9 +219,7 @@ watch(
   (newVal) => {
     if (newVal) {
       // Reset toàn bộ UI state khi bắt đầu mở pack mới
-      const count = cards.value.length || 0
-      flipped.value = new Array(count).fill(false)
-      imageLoaded.value = new Array(count).fill(false)
+      flipped.value = new Array(6).fill(false)
       isPackShaking.value = false
       stopAutoReveal()
     }
@@ -71,26 +230,47 @@ watch(
 
 /**
  * Người dùng click vào ảnh Pack:
- * Chuyển sang Phase 2 ngay lập tức sau hiệu ứng rung, không đợi tải ảnh.
+ * 1. Preload 6 ảnh thẻ bài vào cache trình duyệt
+ * 2. Chạy animation rung
+ * 3. Chuyển sang Phase 2
  */
 async function handlePackClick() {
   if (isPackShaking.value || phase.value !== 'pack_visible') return
 
-  // 1. Chuyển trạng thái rung và âm thanh ngay lập tức
+  // Preload ảnh ngầm để tránh chớp trắng khi lật
+  await preloadCardImages()
+
+  // Animation rung pack
   isPackShaking.value = true
   playTearSound()
 
-  // 2. Chuyển Phase sau 600ms (cho người dùng thấy animation rung)
-  // KHÔNG còn await waitForData() hay preloadCardImages() ở đây nữa
+  // Sau 600ms (thời gian animation rung), chuyển Phase
   setTimeout(() => {
     isPackShaking.value = false
     inventoryStore.revealCards()
-    
-    // Đảm bảo mảng state loaded khớp với số lượng bài thực tế
-    if (imageLoaded.value.length !== cards.value.length) {
-      imageLoaded.value = new Array(cards.value.length).fill(false)
-    }
   }, 600)
+}
+
+/**
+ * Tải sẵn 6 ảnh thẻ bài vào cache trình duyệt.
+ * Dùng Promise.all để tải song song, đảm bảo không bị chớp ảnh khi lật.
+ */
+async function preloadCardImages(): Promise<void> {
+  const imageUrls = cards.value
+    .map(card => card.image ? `${card.image}/low.webp` : null)
+    .filter(Boolean) as string[]
+
+  await Promise.all(
+    imageUrls.map(
+      url =>
+        new Promise<void>((resolve) => {
+          const img = new Image()
+          img.onload = () => resolve()
+          img.onerror = () => resolve() // Không block nếu ảnh lỗi
+          img.src = url
+        })
+    )
+  )
 }
 
 // ─── PHASE 2: Xử lý lật từng thẻ ──────────────────────────────────────────
@@ -115,7 +295,7 @@ function flipCard(index: number) {
 function revealAll() {
   if (phase.value !== 'cards_visible') return
   stopAutoReveal()
-  flipped.value = new Array(cards.value.length).fill(true)
+  flipped.value = new Array(6).fill(true)
   playFlipSound()
 
   // Kiểm tra xem có thẻ hiếm không để phát sound đặc biệt
@@ -182,6 +362,15 @@ function isHighRarity(card: any): boolean {
 }
 
 /**
+ * Lấy URL ảnh booster pack để hiển thị ở Phase 1.
+ * Hiện tại dùng emoji fallback, có thể thay bằng ảnh thực từ API sau.
+ */
+function getPackImageUrl(): string | null {
+  // TCGdex không trả ảnh pack trực tiếp, dùng placeholder
+  return null
+}
+
+/**
  * Trả về tên rarity để hiển thị trong badge
  */
 function getRarityBadge(card: any): { label: string; cssClass: string } {
@@ -205,30 +394,11 @@ function getRarityBadge(card: any): { label: string; cssClass: string } {
  * Lấy market price của thẻ để hiển thị Price Tag
  */
 function getMarketPrice(card: any): string {
-  if (!card?.pricing) return 'N/A'
-
-  // List các trường giá có thể có theo thứ tự ưu tiên
-  const p = card.pricing.tcgplayer || card.pricing.cardmarket
-  if (!p) return 'N/A'
-
-  // Tìm giá thủ công trong các mục phổ biến của TCGplayer
-  const tcg = card.pricing.tcgplayer
-  if (tcg) {
-    const categories = ['normal', 'holofoil', 'reverse', 'reverse-holofoil', 'unlimited', 'unlimited-holofoil']
-    for (const cat of categories) {
-      if (tcg[cat]?.marketPrice) return `$${tcg[cat].marketPrice.toFixed(2)}`
-      if (tcg[cat]?.midPrice) return `$${tcg[cat].midPrice.toFixed(2)}`
-    }
-  }
-
-  // Fallback sang Cardmarket
-  const cm = card.pricing.cardmarket
-  if (cm) {
-    const val = cm.avg || cm.trend || cm.avg1 || cm.avg7
-    if (val) return `$${val.toFixed(2)}`
-  }
-
-  return 'N/A'
+  const price = card?.pricing?.tcgplayer?.normal?.marketPrice
+    ?? card?.pricing?.cardmarket?.avg
+    ?? null
+  if (!price) return 'N/A'
+  return `$${price.toFixed(2)}`
 }
 
 // ─── Audio System ───────────────────────────────────────────────────────────
@@ -319,36 +489,29 @@ onUnmounted(() => {
     >
 
       <!-- ═══════════════════════════════════════════════════════════
-           PHASE SWITCHER — Đảm bảo chuyển phase mượt mà không bị lệch
+           PHASE 1: Hiển thị ảnh Pack lớn (packPhase = 'pack_visible')
       ═══════════════════════════════════════════════════════════ -->
-      <Transition name="phase-switch" mode="out-in">
-        
-        <!-- PHASE 1: Hiển thị ảnh Pack lớn -->
+      <Transition name="pack-disappear">
         <div
           v-if="phase === 'pack_visible'"
-          key="pack"
           class="pack-phase"
         >
           <h2 class="pack-title">Mở Pack Thẻ Bài!</h2>
           <p class="pack-subtitle">Click vào pack để xé</p>
 
+          <!-- Ảnh Pack lớn -->
           <div
             class="pack-wrapper"
             :class="{ 'pack-shaking': isPackShaking }"
             @click="handlePackClick"
           >
+            <!-- Glow rings bên ngoài pack -->
             <div class="pack-glow-ring ring-1"></div>
             <div class="pack-glow-ring ring-2"></div>
 
+            <!-- Ảnh Pack (emoji fallback vì TCGdex không có ảnh pack) -->
             <div class="pack-image-container">
-              <!-- Real Pack Image -->
-              <img 
-                v-if="inventoryStore.currentPackSetId"
-                :src="getPackVisuals(inventoryStore.currentPackSetId).front"
-                class="pack-front-img"
-                @error="(e) => (e.target as HTMLImageElement).src = '/assets/packs/default.webp'"
-              />
-              <div v-else class="pack-emoji">🎴</div>
+              <div class="pack-emoji">🎴</div>
               <div class="pack-shine"></div>
             </div>
           </div>
@@ -357,15 +520,20 @@ onUnmounted(() => {
             <span class="click-icon">👆</span> Click để xé
           </p>
         </div>
+      </Transition>
 
-        <!-- PHASE 2: Hiển thị 6 lá bài -->
+      <!-- ═══════════════════════════════════════════════════════════
+           PHASE 2: Hiển thị 6 lá bài (packPhase = 'cards_visible')
+      ═══════════════════════════════════════════════════════════ -->
+      <Transition name="cards-appear">
         <div
-          v-else-if="phase === 'cards_visible'"
-          key="cards"
+          v-if="phase === 'cards_visible'"
           class="cards-phase"
         >
+          <!-- Title -->
           <h2 class="cards-title">⭐ Kết quả mở Pack ⭐</h2>
 
+          <!-- Lưới 6 thẻ bài — dùng flex-wrap để responsive -->
           <div class="cards-grid">
             <div
               v-for="(card, index) in cards"
@@ -373,6 +541,7 @@ onUnmounted(() => {
               class="card-slot"
               @click="flipCard(index)"
             >
+              <!-- Container 3D -->
               <div
                 class="card-3d-container"
                 :class="{
@@ -381,49 +550,51 @@ onUnmounted(() => {
                   'is-hoverable': flipped[index]
                 }"
               >
+                <!-- MẶT SAU (Lưng bài — hiển thị khi chưa lật) -->
                 <div class="card-face card-back">
-                  <img :src="getCardBackUrl()" class="card-back-img" alt="Card Back" />
+                  <div class="card-back-pattern">
+                    <div class="card-back-logo">🎴</div>
+                    <div class="card-back-lines"></div>
+                  </div>
                   <div class="flip-hint" v-if="!flipped[index]">Click để lật</div>
                 </div>
 
+                <!-- MẶT TRƯỚC (Ảnh thật — hiển thị sau khi lật) -->
                 <div class="card-face card-front">
+                  <!-- Price Tag nổi lên trên ảnh -->
                   <div class="price-tag">
                     {{ getMarketPrice(card) }}
                   </div>
 
-                  <!-- Spinner khi chưa tải xong ảnh -->
-                  <div v-if="card.image && !imageLoaded[index]" class="card-loader">
-                    <div class="spinner"></div>
-                    <span class="loader-text">Loading...</span>
-                  </div>
-
+                  <!-- Ảnh thẻ bài từ API (toàn bộ thẻ, không cần text bổ sung) -->
                   <img
                     v-if="card.image"
-                    :src="`${card.image}/high.webp`"
+                    :src="`${card.image}/low.webp`"
                     :alt="card.name"
                     class="card-image"
-                    :class="{ 'img-hidden': !imageLoaded[index] }"
-                    loading="lazy"
-                    @load="imageLoaded[index] = true"
+                    loading="eager"
                   />
+                  <!-- Fallback nếu không có ảnh -->
                   <div v-else class="card-no-image">
                     <span class="card-no-image-name">{{ card.name }}</span>
                   </div>
 
+                  <!-- Rarity Badge -->
                   <div
-                    v-if="card.rarity !== 'Common'"
                     class="rarity-badge"
                     :class="getRarityBadge(card).cssClass"
                   >
                     {{ getRarityBadge(card).label }}
                   </div>
 
+                  <!-- Holographic overlay (chỉ hiện với thẻ hiếm) -->
                   <div v-if="isHighRarity(card)" class="holo-overlay"></div>
                 </div>
               </div>
             </div>
           </div>
 
+          <!-- ─── Controls UI — Góc dưới phải ──────────────────── -->
           <div class="controls-panel">
             <span class="controls-hint">🖱️ Click thẻ để lật • Hoặc dùng nút bên dưới</span>
             <div class="controls-buttons">
@@ -444,6 +615,7 @@ onUnmounted(() => {
                 ✨ Reveal All
               </button>
 
+              <!-- Nút Collect: chỉ hiện khi tất cả đã lật -->
               <Transition name="collect-appear">
                 <button
                   v-if="allFlipped"
@@ -587,18 +759,17 @@ onUnmounted(() => {
   position: relative;
   width: 180px;
   height: 250px;
-  background: transparent;
+  background: linear-gradient(135deg, #1e3a5f 0%, #0d1b2a 50%, #2d1b69 100%);
+  border-radius: 16px;
+  border: 2px solid rgba(99, 102, 241, 0.5);
+  box-shadow:
+    0 0 40px rgba(99, 102, 241, 0.4),
+    0 0 80px rgba(168, 85, 247, 0.2),
+    inset 0 0 30px rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: visible;
-}
-
-.pack-front-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.4));
+  overflow: hidden;
 }
 
 .pack-emoji {
@@ -654,7 +825,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5rem 1.5rem; /* Tăng khoảng cách dọc giữa tiêu đề và grid */
+  gap: 1.5rem;
   padding: 1.5rem;
   width: 100%;
   max-height: 100vh;
@@ -671,21 +842,19 @@ onUnmounted(() => {
   text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
 }
 
-/* Grid 6 thẻ — Sử dụng flex để căn giữa linh hoạt */
+/* Grid 6 thẻ — flex-wrap để tự động xuống dòng khi màn nhỏ */
 .cards-grid {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 2.5rem 1.5rem;
-  width: 95%;
-  max-width: 1600px; /* Giới hạn độ rộng tối đa trên màn siêu rộng */
-  margin: 0 auto;
+  gap: 1rem;
+  max-width: 900px;
+  width: 100%;
 }
 
 .card-slot {
-  flex: 0 1 auto;
-  /* Thẻ bài tự co giãn từ 150px đến 230px dựa trên chiều rộng màn hình (14vw) */
-  width: clamp(150px, 14vw, 230px);
+  flex: 0 0 auto;
+  width: 130px;
   cursor: pointer;
 }
 
@@ -694,11 +863,11 @@ onUnmounted(() => {
 ═══════════════════════════════════════════════════════════════════ */
 .card-3d-container {
   position: relative;
-  width: 100%; /* Ăn theo card-slot */
-  aspect-ratio: 230 / 322; /* Duy trì tỷ lệ chuẩn */
+  width: 130px;
+  height: 182px;   /* Tỷ lệ chuẩn thẻ Pokemon: 2.5 x 3.5 inch ≈ 1:1.4 */
   transform-style: preserve-3d;
   transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 12px;
+  border-radius: 10px;
 }
 
 /* Lật 180 độ khi đã flipped */
@@ -725,17 +894,22 @@ onUnmounted(() => {
 
 /* ─── MẶT SAU (Lưng bài) ─────────────────────────────────────── */
 .card-back {
-  background: #1a1a1a;
+  background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #1565c0 100%);
+  border: 2px solid rgba(100, 150, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.card-back-img {
+.card-back-pattern {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  padding: 0.5rem;
 }
 
 .card-back-logo {
@@ -769,7 +943,6 @@ onUnmounted(() => {
   transform: rotateY(180deg);
   background: #111;
   border: 2px solid rgba(255, 255, 255, 0.1);
-  overflow: visible; /* ĐỂ HIỆN PRICE TAG Ở TRÊN */
 }
 
 /* Ảnh thẻ bài chiếm toàn bộ mặt trước */
@@ -801,20 +974,20 @@ onUnmounted(() => {
 /* ─── PRICE TAG ──────────────────────────────────────────────── */
 .price-tag {
   position: absolute;
-  top: -18px; /* Đẩy lên cao hơn để không đè vào đầu card */
+  top: -12px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 50;
+  z-index: 10;
   background: linear-gradient(135deg, #059669, #10b981);
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   font-weight: 900;
-  padding: 4px 14px;
+  padding: 3px 10px;
   border-radius: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   box-shadow:
-    0 4px 15px rgba(5, 150, 105, 0.6),
-    0 0 20px rgba(16, 185, 129, 0.3);
+    0 4px 12px rgba(5, 150, 105, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
   white-space: nowrap;
   letter-spacing: 0.05em;
   pointer-events: none;
@@ -866,55 +1039,6 @@ onUnmounted(() => {
   0%   { background-position: 0% 50%; opacity: 0.6; }
   50%  { opacity: 1; }
   100% { background-position: 100% 50%; opacity: 0.7; }
-}
-
-/* ─── HIỆU ỨNG LOADING Thẻ Bài ───────────────────────────────── */
-.card-loader {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(13, 27, 42, 0.9);
-  backdrop-filter: blur(4px);
-  z-index: 5;
-  gap: 1rem;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(255, 215, 0, 0.1);
-  border-top-color: #ffd700;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
-}
-
-.loader-text {
-  font-size: 0.7rem;
-  color: #ffd700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-weight: 900;
-  opacity: 0.8;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.card-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  transition: opacity 0.4s ease;
-  z-index: 1;
-}
-
-.img-hidden {
-  opacity: 0;
 }
 
 /* Ánh sáng thêm cho thẻ holo */
@@ -1019,7 +1143,7 @@ onUnmounted(() => {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   VUE TRANSITION ANIMATIONS (PHASE SWITCHER)
+   VUE TRANSITION ANIMATIONS
 ═══════════════════════════════════════════════════════════════════ */
 
 /* Overlay fade in/out */
@@ -1028,20 +1152,21 @@ onUnmounted(() => {
 .overlay-fade-enter-from,
 .overlay-fade-leave-to    { opacity: 0; }
 
-/* Phase Switch (Mode: Out-In) */
-.phase-switch-leave-active {
+/* Pack biến mất */
+.pack-disappear-leave-active {
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.phase-switch-leave-to {
+.pack-disappear-leave-to {
   opacity: 0;
   transform: scale(0.5);
   filter: blur(10px);
 }
 
-.phase-switch-enter-active {
+/* Cards xuất hiện */
+.cards-appear-enter-active {
   transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
 }
-.phase-switch-enter-from {
+.cards-appear-enter-from {
   opacity: 0;
   transform: scale(0.9) translateY(20px);
 }
@@ -1056,23 +1181,16 @@ onUnmounted(() => {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   RESPONSIVE — Tablet & Mobile
+   RESPONSIVE — Màn hình nhỏ
 ═══════════════════════════════════════════════════════════════════ */
-/* Tablet: Chia thành 2 hàng (mỗi hàng 3 thẻ) */
-@media (max-width: 1200px) {
-  .cards-grid {
-    max-width: 800px; /* Thu hẹp container để ép 3 thẻ/hàng */
-    gap: 2rem 1.5rem;
-  }
-}
-
 @media (max-width: 640px) {
   .card-slot {
-    width: 140px;
+    width: 100px;
   }
 
-  .cards-grid {
-    gap: 1.5rem 1rem;
+  .card-3d-container {
+    width: 100px;
+    height: 140px;
   }
 
   .cards-title {
@@ -1096,3 +1214,64 @@ onUnmounted(() => {
   .ring-2 { width: 220px; height: 220px; }
 }
 </style>
+```
+
+---
+
+## BƯỚC 3: Kiểm tra TypeScript Errors
+
+Sau khi viết xong, chạy:
+
+```bash
+npm run build
+```
+
+Nếu có lỗi TypeScript về `packPhase` hoặc `currentPackId` không tồn tại trong state, kiểm tra lại **Bước 1.1** — đảm bảo đã thêm đúng 2 dòng vào state.
+
+---
+
+## BƯỚC 4: Test thủ công
+
+Chạy `npm run dev` và kiểm tra các trường hợp sau:
+
+```
+[ ] Mở game → Nhập hàng → Mua ít nhất 1 Pack từ Online Shop
+[ ] Ở UIOverlay: Click nút "Mở Pack" → Overlay xuất hiện với ảnh Pack lớn
+[ ] Phase 1: Click vào Pack → Có animation rung → Chuyển sang Phase 2
+[ ] Phase 2: Thấy 6 lá bài đang úp mặt
+[ ] Click từng lá → Lật 3D mượt mà → Hiện ảnh thẻ từ API
+[ ] Ảnh thẻ KHÔNG bị chớp/trắng (nhờ preload)
+[ ] Thẻ hiếm (Rarity ≥ Rare): có hiệu ứng holo lấp lánh
+[ ] Thẻ thứ 6 (index 5) luôn là thẻ hiếm nhất
+[ ] Price Tag màu xanh lá hiển thị đúng marketPrice
+[ ] Nút Auto-Reveal: Lật lần lượt từng thẻ 0.5s/thẻ
+[ ] Nút Reveal All: Lật cùng lúc tất cả
+[ ] Nút Collect: Chỉ xuất hiện khi đủ 6 lá đã lật, click đóng overlay
+[ ] Hover vào thẻ đã lật: Scale lên 1.08x
+[ ] Màn hình nhỏ (640px): 6 thẻ tự xuống 2 hàng, không bị méo
+```
+
+---
+
+## TỔNG KẾT CÁC THAY ĐỔI
+
+### `inventoryStore.ts` — Tóm tắt:
+- **Thêm state**: `packPhase`, `currentPackId`
+- **Sửa action `tearPack`**: Thêm logic sắp xếp thẻ hiếm nhất về cuối (index 5), lưu đầy đủ vào binder, set `packPhase = 'pack_visible'`
+- **Thêm action `revealCards`**: Chuyển `packPhase = 'cards_visible'`
+- **Sửa action `closePackOpening`**: Reset `packPhase` và `currentPackId`
+
+### `PackOpeningOverlay.vue` — Tóm tắt:
+- Viết lại hoàn toàn với 2-phase UX flow
+- Phase 1: Ảnh Pack lớn + animation ring glow + click để xé
+- Phase 2: 6 thẻ úp mặt + hệ thống lật 3D CSS
+- Holographic overlay cho thẻ hiếm
+- Price Tag xanh lá nổi trên mỗi thẻ
+- Hệ thống controls: Auto-Reveal / Reveal All / Collect
+- Preload ảnh trước khi chuyển phase
+- Responsive với `flex-wrap`
+- Âm thanh (Web Audio API)
+
+---
+
+*Hướng dẫn này được thiết kế để AI Agent thực hiện tuần tự từng bước mà không bỏ sót.*
