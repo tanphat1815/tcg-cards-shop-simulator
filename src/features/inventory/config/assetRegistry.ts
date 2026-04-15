@@ -13,14 +13,16 @@ const BOXES_PATH = `${BASE_PATH}/boxes`;
 const CARDS_PATH = `${BASE_PATH}/cards`;
 const ENTITIES_PATH = `${BASE_PATH}/entities`;
 
+const DEFAULT_IMAGE_EXT = 'webp';
+
 export type AssetType = 'pack' | 'box' | 'card' | 'entity';
 
 /**
  * Cấu hình thủ công cho các asset đặc biệt hoặc không tuân theo quy tắc đặt tên setId.
  */
 export const ASSET_OVERRIDES: {
-  packs: Record<string, { front: string; back?: string }>;
-  boxes: Record<string, { front: string; back?: string }>;
+  packs: Record<string, { front?: string; back?: string; ext?: string }>;
+  boxes: Record<string, { front?: string; back?: string; ext?: string }>;
   cards: { back: string };
   entities: Record<string, string>;
 } = {
@@ -43,11 +45,12 @@ export const ASSET_OVERRIDES: {
  * Tự động nội suy nếu không có override.
  */
 export function getPackVisuals(setId: string) {
-  if (ASSET_OVERRIDES.packs[setId]) return ASSET_OVERRIDES.packs[setId];
+  const override = ASSET_OVERRIDES.packs[setId];
+  const ext = override?.ext || DEFAULT_IMAGE_EXT;
 
   return {
-    front: `${PACKS_PATH}/${setId}.webp`,
-    back: `${PACKS_PATH}/back.webp`, // Mặc định dùng chung 1 mặt sau cho mọi pack nếu không có riêng
+    front: override?.front || `${PACKS_PATH}/${setId}.${ext}`,
+    back: override?.back || `${PACKS_PATH}/back.${ext}`,
   };
 }
 
@@ -55,11 +58,12 @@ export function getPackVisuals(setId: string) {
  * Hàm lấy đường dẫn ảnh Box dựa trên setId.
  */
 export function getBoxVisuals(setId: string) {
-  if (ASSET_OVERRIDES.boxes[setId]) return ASSET_OVERRIDES.boxes[setId];
+  const override = ASSET_OVERRIDES.boxes[setId];
+  const ext = override?.ext || DEFAULT_IMAGE_EXT;
 
   return {
-    front: `${BOXES_PATH}/${setId}.webp`,
-    back: `${BOXES_PATH}/back.webp`,
+    front: override?.front || `${BOXES_PATH}/${setId}.${ext}`,
+    back: override?.back || `${BOXES_PATH}/back.${ext}`,
   };
 }
 
@@ -81,7 +85,7 @@ export function getMiscAsset(key: string): string {
  * Utility: Kiểm tra xem một item có ảnh trong public không (giả định dựa trên setId).
  * Có thể mở rộng để check file tồn tại nếu cần.
  */
-export function hasCustomVisual(type: 'pack' | 'box', setId?: string): boolean {
+export function hasCustomVisual(_type: 'pack' | 'box', setId?: string): boolean {
   if (!setId) return false;
   // Trong môi trường này, ta luôn trả về true để UI ưu tiên render <img> 
   // và dùng thuộc tính @error để fallback về icon nếu file 404.

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useGameStore } from '../../shop-ui/store/gameStore'
 import { useInventoryStore } from '../store/inventoryStore'
 import { useApiStore } from '../store/apiStore'
 import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import TcgCard from '../../../components/shared/TcgCard.vue'
 
 const gameStore = useGameStore()
 const inventoryStore = useInventoryStore()
@@ -23,6 +24,53 @@ const binderItems = computed(() => {
       quantity: inventoryStore.personalBinder[cardId]
     }
   })
+})
+
+// ─── Pagination Logic ──────────────────────────────────────────────────────
+const CARDS_PER_PAGE = 6 // Per page (Left or Right)
+const CARDS_PER_VIEW = CARDS_PER_PAGE * 2 // 12 cards total in one "open book" view
+const currentPage = ref(0) // View index
+
+const totalViews = computed(() => Math.ceil(binderItems.value.length / CARDS_PER_VIEW) || 1)
+
+const leftPageCards = computed(() => {
+  const start = currentPage.value * CARDS_PER_VIEW
+  return binderItems.value.slice(start, start + CARDS_PER_PAGE)
+})
+
+const rightPageCards = computed(() => {
+  const start = currentPage.value * CARDS_PER_VIEW + CARDS_PER_PAGE
+  return binderItems.value.slice(start, start + CARDS_PER_PAGE)
+})
+
+const nextPage = () => {
+  if (currentPage.value < totalViews.value - 1) currentPage.value++
+}
+
+const prevPage = () => {
+  if (currentPage.value > 0) currentPage.value--
+}
+
+// ─── Value Calculation ─────────────────────────────────────────────────────
+const totalEstimatedValue = computed(() => {
+  let total = 0
+  binderItems.value.forEach(item => {
+    if (!item.card?.pricing) return
+    const tcg = item.card.pricing.tcgplayer
+    let price = 0
+    if (tcg) {
+      const categories = ['normal', 'holofoil', 'reverse', 'reverse-holofoil', 'unlimited', 'unlimited-holofoil']
+      for (const cat of categories) {
+        if (tcg[cat]?.marketPrice) { price = tcg[cat].marketPrice; break }
+        if (tcg[cat]?.midPrice) { price = tcg[cat].midPrice; break }
+      }
+    } else {
+      const cm = item.card.pricing.cardmarket
+      if (cm) price = cm.avg || cm.trend || cm.avg1 || cm.avg7 || 0
+    }
+    total += price * item.quantity
+  })
+  return total.toFixed(2)
 })
 
 // Tự động load những card còn thiếu thông tin
@@ -46,120 +94,360 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="gameStore.showBinderMenu" class="absolute inset-0 z-[150] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md pointer-events-auto p-8">
-    
-    <!-- Header -->
-    <div class="w-full max-w-6xl flex justify-between items-center mb-8 border-b border-indigo-900 pb-4">
-      <h2 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-500 to-pink-500 tracking-widest drop-shadow-sm flex items-center gap-4">
-        <span>📔</span> PERSONAL BINDER
-      </h2>
+  <div v-if="gameStore.showBinderMenu" class="binder-overlay">
+    <!-- Close Button Top Right -->
+    <div class="absolute top-6 right-6 z-[200]">
       <EnhancedButton
         variant="icon"
-        size="sm"
+        size="lg"
         :icon="{ name: 'close' }"
         defaultText=""
         @click="gameStore.setShowBinderMenu(false)"
+        class="close-btn"
       />
     </div>
 
-    <!-- Grid -->
-    <div class="w-full max-w-6xl flex-grow overflow-y-auto custom-scroll pr-4 bg-gray-900/40 p-6 rounded-3xl border border-indigo-900/50 shadow-inner">
-      <div v-if="binderItems.length === 0" class="flex flex-col items-center justify-center h-full text-center text-gray-500">
-        <span class="text-6xl mb-4 opacity-50">🪹</span>
-        <p class="text-xl">Sổ siêu tầm hiện đang trống.</p>
-        <p class="text-sm mt-2">Hãy mở Pack và cất những quân bài quý giá nhất vào đây!</p>
+    <!-- MAIN BINDER CONTAINER -->
+    <div class="binder-container">
+      <!-- Binder Cover/Body -->
+      <div class="binder-body">
+        
+        <!-- LEFT PAGE -->
+        <div class="binder-page left-page">
+          <div class="page-content">
+            <div v-if="leftPageCards.length === 0" class="empty-page">
+              <span class="text-4xl opacity-30">🎴</span>
+              <p>Trang này còn trống</p>
+            </div>
+            <div v-else class="cards-grid">
+              <div v-for="item in leftPageCards" :key="item.id" class="binder-card-slot">
+                <TcgCard 
+                  v-if="item.card"
+                  :card="item.card"
+                  :is-flipped="true"
+                  :show-quantity="true"
+                  :quantity="item.quantity"
+                  :show-price="true"
+                  size="small"
+                />
+                <div v-else class="card-loading-placeholder">
+                  <div class="spinner"></div>
+                  <span>Loading...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Page Number Left -->
+          <div class="page-number left">Page {{ currentPage * 2 + 1 }}</div>
+        </div>
+
+        <!-- RINGS (CENTER) -->
+        <div class="binder-spine">
+          <div class="ring" v-for="i in 6" :key="i"></div>
+        </div>
+
+        <!-- RIGHT PAGE -->
+        <div class="binder-page right-page">
+          <div class="page-content">
+            <div v-if="rightPageCards.length === 0" class="empty-page">
+              <span class="text-4xl opacity-30">🎴</span>
+              <p>Trang này còn trống</p>
+            </div>
+            <div v-else class="cards-grid">
+              <div v-for="item in rightPageCards" :key="item.id" class="binder-card-slot">
+                <TcgCard 
+                  v-if="item.card"
+                  :card="item.card"
+                  :is-flipped="true"
+                  :show-quantity="true"
+                  :quantity="item.quantity"
+                  :show-price="true"
+                  size="small"
+                />
+                <div v-else class="card-loading-placeholder">
+                  <div class="spinner"></div>
+                  <span>Loading...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Page Number Right -->
+          <div class="page-number right">Page {{ currentPage * 2 + 2 }}</div>
+        </div>
+
       </div>
 
-      <div v-else class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-        <template v-for="item in binderItems" :key="item.id">
-          <!-- Card Display -->
-          <div 
-            v-if="item.card"
-            class="relative w-full h-64 mx-auto rounded-xl p-2 flex flex-col justify-between group transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_10px_30px_rgba(79,70,229,0.4)]"
-          :class="{
-            'bg-gradient-to-br from-gray-200 via-gray-300 to-gray-400 border-gray-400': item.card!.rarity === 'Common' || item.card!.rarity === 'None',
-            'bg-gradient-to-br from-blue-200 via-blue-400 to-cyan-500 border-blue-400 shadow-[0_0_20px_rgba(56,189,248,0.5)]': item.card!.rarity === 'Uncommon',
-            'bg-gradient-to-br from-yellow-100 via-yellow-400 to-orange-500 border-yellow-300 shadow-[0_0_40px_rgba(250,204,21,0.8)]': item.card!.rarity === 'Rare' || item.card!.rarity === 'Ultra Rare' || item.card!.rarity === 'Secret Rare',
-          }"
-          style="border-width: 4px;"
-        >
-          <!-- Header -->
-          <div class="flex justify-between items-center bg-black/15 px-2 py-1.5 rounded-t shadow-sm">
-            <span class="font-bold text-gray-900 truncate pr-2 text-sm drop-shadow-sm">{{ item.card!.name }}</span>
-            <span class="text-xs font-black text-red-700 bg-white/70 px-1 py-0.5 rounded shadow-sm">{{ item.card!.hp }} <span class="text-[8px]">HP</span></span>
-          </div>
-
-          <!-- Image -->
-          <div class="flex-grow my-1.5 bg-gradient-to-br from-white/60 to-white/20 rounded-sm shadow-inner border border-white/50 flex items-center justify-center overflow-hidden">
-            <img 
-              v-if="item.card!.image" 
-              :src="item.card!.image + '/high.webp'" 
-              :alt="item.card!.name" 
-              class="w-full h-full object-cover rounded"
-            />
-            <div v-else class="text-5xl drop-shadow-xl text-center leading-none">
-              {{ item.card!.types?.[0] === 'Fire' ? '🔥' : item.card!.types?.[0] === 'Water' ? '💧' : item.card!.types?.[0] === 'Grass' ? '🍃' : item.card!.types?.[0] === 'Electric' ? '⚡' : '🔮' }}
-            </div>
-          </div>
-
-          <!-- Footer / Stats -->
-          <div class="bg-black/85 rounded-b p-1.5 text-center border-t border-white/30">
-            <div class="text-[10px] uppercase font-bold tracking-widest"
-              :class="{
-                'text-gray-400': item.card!.rarity === 'Common' || item.card!.rarity === 'None',
-                'text-blue-300': item.card!.rarity === 'Uncommon',
-                'text-yellow-400': item.card!.rarity === 'Rare',
-              }"
-            >
-              {{ item.card!.rarity }}
-            </div>
-            <div class="text-green-400 font-black text-sm mt-0.5 tracking-wide">${{ item.card!.pricing?.tcgplayer?.normal?.marketPrice?.toFixed(2) || 'N/A' }}</div>
-          </div>
-
-          <!-- Quantity Badge -->
-          <div class="absolute -top-3 -right-3 bg-red-600 text-white font-black px-2.5 py-1 rounded-full shadow-lg border-2 border-white text-sm z-10">
-            x{{ item.quantity }}
-          </div>
-
-          <!-- Tooltip / Action Overlay -->
-          <div class="absolute inset-0 bg-black/80 backdrop-blur-sm rounded flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
-            <div class="text-white font-bold text-sm">Chỉ trưng bày</div>
-          </div>
+      <!-- Navigation & Info Footer -->
+      <div class="binder-footer">
+        <div class="nav-controls">
+          <button @click="prevPage" :disabled="currentPage === 0" class="nav-btn prev">
+            <span class="icon">◀</span> TRANG TRƯỚC
+          </button>
           
-          <!-- Holo Effect Overlay for Rare -->
-          <div v-if="item.card!.rarity === 'Rare' || item.card!.rarity === 'Ultra Rare' || item.card!.rarity === 'Secret Rare'" class="absolute inset-0 bg-gradient-to-tr from-transparent via-white/40 to-transparent rounded opacity-50 mix-blend-overlay pointer-events-none"></div>
+          <div class="page-indicator">
+            VIEW {{ currentPage + 1 }} / {{ totalViews }}
           </div>
 
-          <!-- Loading Placeholder for missing card data -->
-          <div v-else class="relative w-full h-64 mx-auto border-4 border-dashed border-indigo-900/40 rounded-xl flex items-center justify-center bg-gray-800/20 animate-pulse">
-            <div class="flex flex-col items-center gap-2">
-              <span class="text-3xl grayscale opacity-30">🎴</span>
-              <span class="text-[10px] font-bold text-gray-600 uppercase">Loading Data...</span>
-            </div>
-            <!-- Quantity Badge still visible -->
-            <div class="absolute -top-3 -right-3 bg-gray-700 text-white font-black px-2.5 py-1 rounded-full shadow-lg border-2 border-gray-600 text-sm z-10">
-              x{{ item.quantity }}
-            </div>
+          <button @click="nextPage" :disabled="currentPage >= totalViews - 1" class="nav-btn next">
+            TRANG SAU <span class="icon">▶</span>
+          </button>
+        </div>
+
+        <div class="binder-stats">
+          <div class="stat-item">
+            <span class="label">Tổng số thẻ:</span>
+            <span class="value">{{ binderItems.length }}</span>
           </div>
-        </template>
+          <div class="stat-item">
+            <span class="label">Giá trị ước tính:</span>
+            <span class="value text-green-400">${{ totalEstimatedValue }}</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.custom-scroll::-webkit-scrollbar {
-  width: 8px;
+.binder-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(10px);
+  padding: 2rem;
 }
-.custom-scroll::-webkit-scrollbar-track {
-  background: rgba(17, 24, 39, 0.5); 
-  border-radius: 4px;
+
+.close-btn {
+  filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
 }
-.custom-scroll::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.6); 
-  border-radius: 4px;
+
+.binder-container {
+  width: 95%;
+  max-width: 1400px;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
-.custom-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.9); 
+
+.binder-body {
+  flex-grow: 1;
+  display: flex;
+  background: #2b1d12; /* Leather color */
+  border-radius: 20px;
+  padding: 15px;
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.8),
+    inset 0 0 40px rgba(0,0,0,0.5);
+  border: 4px solid #1a110a;
+  position: relative;
+  overflow: hidden;
+}
+
+.binder-spine {
+  width: 40px; /* Reduced from 60px */
+  height: 100%;
+  background: linear-gradient(to right, #1a110a, #3d2b1d, #1a110a);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 10;
+  box-shadow: 0 0 20px rgba(0,0,0,0.5);
+}
+
+.ring {
+  width: 30px;
+  height: 10px;
+  background: linear-gradient(to bottom, #d1d5db, #9ca3af, #4b5563);
+  border-radius: 5px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.binder-page {
+  flex: 1;
+  background: #fdfbf7; /* Paper color */
+  position: relative;
+  padding: 10px 15px; /* Further reduced padding */
+  overflow: hidden;
+}
+
+.left-page {
+  border-radius: 10px 0 0 10px;
+  box-shadow: inset -20px 0 30px rgba(0,0,0,0.05);
+}
+
+.right-page {
+  border-radius: 0 10px 10px 0;
+  box-shadow: inset 20px 0 30px rgba(0,0,0,0.05);
+}
+
+.page-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 10px;
+  height: 100%;
+  align-content: stretch;
+  justify-content: center;
+  align-items: center;
+}
+
+.binder-card-slot {
+  width: 85%; /* Reduced width of the card within its slot */
+  margin: 0 auto; /* Center it */
+  aspect-ratio: 230 / 322;
+  position: relative;
+}
+
+.empty-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-weight: bold;
+  gap: 1rem;
+}
+
+.page-number {
+  position: absolute;
+  bottom: 15px;
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.left { left: 20px; }
+.right { right: 20px; }
+
+/* Footer Styling */
+.binder-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.5);
+  padding: 1rem 2rem;
+  border-radius: 15px;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white;
+}
+
+.nav-controls {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+
+.nav-btn {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border: none;
+  padding: 0.5rem 1.5rem;
+  border-radius: 10px;
+  font-weight: 900;
+  font-size: 0.8rem;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.nav-btn:not(:disabled):hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(79, 70, 229, 0.4);
+}
+
+.page-indicator {
+  font-weight: 900;
+  font-size: 0.9rem;
+  letter-spacing: 0.2rem;
+  color: #a5b4fc;
+}
+
+.binder-stats {
+  display: flex;
+  gap: 2rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.stat-item .label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.stat-item .value {
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.card-loading-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #edf2f7;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #a0aec0;
+  font-size: 0.7rem;
+  font-weight: bold;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #4a5568;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mobile responsiveness */
+@media (max-width: 1024px) {
+  .binder-body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .binder-spine {
+    width: 100%;
+    height: 40px;
+    flex-direction: row;
+  }
+  .ring {
+    width: 10px;
+    height: 20px;
+  }
 }
 </style>

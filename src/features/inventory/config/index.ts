@@ -20,5 +20,19 @@ export const STOCK_ITEMS: Record<string, StockItemInfo> = {
 export const SET_BLACKLIST = [
   'wp', // Wizards Black Star Promos (empty card list in TCGdex)
   'exu', // Unseen Forces Unown Collection Booster Box (can not find image),
-  'basep', // Wizards Black Star Promos Booster Pack
+  'basep', // Wizards Black Star Promos Booster Pack,
+  'box_dpp', // DP Black Star Promos Booster Box (64 Packs),
+  'pack_dp1', // DP Black Star Promos Booster Pack,
+  'box_bwp', // BW Black Star Promos Booster Box (64 Packs),
+  'pack_bwp', // BW Black Star Promos Booster Pack,
+  'box_rc', // Radiant Collection Booster Box (64 Packs),
+  'pack_bw11', // Radiant Collection Booster Pack,
+  'pack_g1', 
+  'box_g1',
+  'pack_xy0',
+  'box_xy0',
+  'pack_xyp',
+  'box_xyp',
+  'pack_xya',
+  'box_xya',
 ];
