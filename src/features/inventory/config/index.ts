@@ -19,4 +19,6 @@ export const STOCK_ITEMS: Record<string, StockItemInfo> = {
 // List of Set IDs that should not appear in the shop (e.g. empty card lists or broken metadata)
 export const SET_BLACKLIST = [
   'wp', // Wizards Black Star Promos (empty card list in TCGdex)
+  'exu', // Unseen Forces Unown Collection Booster Box (can not find image),
+  'basep', // Wizards Black Star Promos Booster Pack
 ];

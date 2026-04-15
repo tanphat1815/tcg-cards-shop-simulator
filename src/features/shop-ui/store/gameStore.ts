@@ -43,7 +43,6 @@ export const useGameStore = defineStore('game', {
     // === Inventory & Cards (Modules: inventoryStore) ===
     shopInventory: () => useInventoryStore().shopInventory,
     personalBinder: () => useInventoryStore().personalBinder,
-    allCards: () => useInventoryStore().allCards,
     shopItems: () => useInventoryStore().shopItems,
     isOpeningPack: () => useInventoryStore().isOpeningPack,
     currentPack: () => useInventoryStore().currentPack,

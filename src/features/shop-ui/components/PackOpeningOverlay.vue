@@ -13,7 +13,7 @@
  *   → Click từng lá hoặc dùng Auto/Reveal All để lật
  *   → Khi đủ 6 lá lật → hiện nút Collect
  */
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, reactive } from 'vue'
 import { useInventoryStore } from '../../inventory/store/inventoryStore'
 import { getPackVisuals, getCardBackUrl } from '../../inventory/config/assetRegistry'
 
@@ -34,6 +34,14 @@ let autoRevealTimer: ReturnType<typeof setInterval> | null = null
 
 /** Theo dõi trạng thái đã tải xong ảnh của từng card: imageLoaded[index] = true */
 const imageLoaded = ref<boolean[]>([])
+
+// Fallback tracking for custom assets
+const assetErrors = reactive({
+  pack: false,
+  cardBack: false
+})
+const handlePackError = () => { assetErrors.pack = true }
+const handleCardBackError = () => { assetErrors.cardBack = true }
 
 // ─── Computed ───────────────────────────────────────────────────────────────
 
@@ -343,10 +351,10 @@ onUnmounted(() => {
             <div class="pack-image-container">
               <!-- Real Pack Image -->
               <img 
-                v-if="inventoryStore.currentPackSetId"
+                v-if="inventoryStore.currentPackSetId && !assetErrors.pack"
                 :src="getPackVisuals(inventoryStore.currentPackSetId).front"
                 class="pack-front-img"
-                @error="(e) => (e.target as HTMLImageElement).src = '/assets/packs/default.webp'"
+                @error="handlePackError"
               />
               <div v-else class="pack-emoji">🎴</div>
               <div class="pack-shine"></div>
@@ -382,7 +390,18 @@ onUnmounted(() => {
                 }"
               >
                 <div class="card-face card-back">
-                  <img :src="getCardBackUrl()" class="card-back-img" alt="Card Back" />
+                  <img 
+                    v-if="!assetErrors.cardBack"
+                    :src="getCardBackUrl()" 
+                    class="card-back-img" 
+                    alt="Card Back" 
+                    @error="handleCardBackError"
+                  />
+                  <!-- Fallback CSS Pattern if no image -->
+                  <div v-else class="card-back-pattern-fallback">
+                    <div class="card-back-logo">🎴</div>
+                    <div class="card-back-lines"></div>
+                  </div>
                   <div class="flip-hint" v-if="!flipped[index]">Click để lật</div>
                 </div>
 
@@ -736,6 +755,32 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.card-back-pattern-fallback {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #1565c0 100%);
+  border: 2px solid rgba(100, 150, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card-back-logo {
+  font-size: 3rem;
+  filter: brightness(0.8);
+}
+
+.card-back-lines {
+  width: 70%;
+  height: 2px;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent);
+  box-shadow:
+    0 -6px 0 rgba(255,255,255,0.1),
+    0  6px 0 rgba(255,255,255,0.1);
 }
 
 .card-back-logo {

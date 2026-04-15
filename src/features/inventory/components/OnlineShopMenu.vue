@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, reactive } from 'vue'
 import { useGameStore } from '../../shop-ui/store/gameStore'
 import { useStatsStore } from '../../stats/store/statsStore'
 import { useInventoryStore } from '../store/inventoryStore'
@@ -100,6 +100,12 @@ const purchaseExpansion = () => {
 }
 
 const getWorkerData = (id: string) => WORKERS.find((w: any) => w.id === id)
+
+// Track image loading errors to show fallback icons
+const itemImageErrors = reactive<Record<string, boolean>>({})
+const handleImageError = (id: string) => {
+  itemImageErrors[id] = true
+}
 </script>
 
 <template>
@@ -218,17 +224,17 @@ const getWorkerData = (id: string) => WORKERS.find((w: any) => w.id === id)
                     </div>
                     
                     <!-- Real Image from Registry -->
-                    <template v-if="hasCustomVisual(item.type, item.id)">
+                    <template v-if="hasCustomVisual(item.type, item.id) && !itemImageErrors[item.id]">
                       <img 
                         :src="item.type === 'pack' ? getPackVisuals(item.id).front : getBoxVisuals(item.id).front" 
                         class="h-full w-auto object-contain drop-shadow-xl transform group-hover:scale-110 transition-transform duration-500 z-10"
                         :alt="item.name"
-                        @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"
+                        @error="handleImageError(item.id)"
                       />
                     </template>
 
                     <!-- Fallback Icon if no image or error -->
-                    <div v-else class="text-6xl drop-shadow-lg transform group-hover:scale-110 transition-transform duration-500 z-10">
+                    <div v-else class="text-6xl drop-shadow-lg transform group-hover:scale-110 transition-transform duration-500 z-10 select-none">
                       {{ item.type === 'box' ? '📦' : '🎁' }}
                     </div>
                     

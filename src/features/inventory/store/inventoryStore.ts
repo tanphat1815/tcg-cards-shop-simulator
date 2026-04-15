@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import cardsData from '../../../assets/data/cards.json'
 import { STOCK_ITEMS } from '../config'
 import type { StockItemInfo } from '../config'
 import { XP_REWARDS } from '../../stats/config'
@@ -22,8 +21,6 @@ export const useInventoryStore = defineStore('inventory', {
     shopInventory: {} as Record<string, number>, 
     /** Bộ sưu tập thẻ bài cá nhân: cardId -> số lượng */
     personalBinder: {} as Record<string, number>, 
-    /** Toàn bộ dữ liệu thẻ bài có trong Game */
-    allCards: cardsData as any[], 
     /** Cấu hình các loại mặt hàng có thể nhập về */
     shopItems: STOCK_ITEMS,
     
