@@ -4,21 +4,39 @@ import { ref } from 'vue'
 export interface CardData {
   id: string
   name: string
+  supertype?: string
   image?: string
   rarity?: string
   category?: string
   hp?: string
   types?: string[]
+  evolveFrom?: string
+  stage?: string
+  description?: string
+  retreatCost?: number
+  abilities?: Array<{
+    name: string
+    text?: string
+    effect?: string
+    type?: string
+  }>
   attacks?: Array<{
     name: string
     damage?: string
     text?: string
+    effect?: string
     cost?: string[]
   }>
   weaknesses?: Array<{ type: string, value: string }>
-  retreat?: number
-  description?: string
-  effect?: string
+  resistances?: Array<{ type: string, value: string }>
+  artist?: string
+  number?: string
+  set_id?: string
+  set_name?: string
+  set_cardCount?: number
+  series_id?: string
+  series_name?: string
+  tcgplayer_id?: string
   pricing?: {
     tcgplayer?: any
     cardmarket?: any

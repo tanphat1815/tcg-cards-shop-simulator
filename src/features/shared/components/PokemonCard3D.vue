@@ -9,9 +9,12 @@ import { mapRarityToCSS } from '../utils/cardRarityMapper';
 interface Props {
   card: any;
   isBack?: boolean;
+  width?: string | number;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  width: '320px'
+});
 const cardElement = ref<HTMLElement | null>(null);
 const isLoaded = ref(false);
 
@@ -82,6 +85,7 @@ function onImgLoad() {
     ref="cardElement" 
     class="card" 
     :class="[rarityClass, { 'is-back': isBack }]"
+    :style="{ width: typeof props.width === 'number' ? props.width + 'px' : props.width }"
     :data-rarity="rarityClass"
     @mousemove="handleMouseMove"
     @mouseleave="handleMouseLeave"
@@ -114,8 +118,9 @@ function onImgLoad() {
   --pointer-from-center: 0;
   --card-opacity: 1;
   
-  width: 320px;
+  /* width set via dynamic style */
   max-width: 100%;
+  aspect-ratio: 0.714; /* Standard Pokemon card ratio 2.5/3.5 */
   position: relative;
   transition: transform 0.1s ease;
   user-select: none;

@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia'
 import { useInventoryStore } from './inventoryStore'
-import { useStatsStore } from '../../stats/store/statsStore'
-import { useStaffStore } from '../../staff/store/staffStore'
-import { STOCK_ITEMS, type StockItemInfo, SET_BLACKLIST } from '../config'
+import { type StockItemInfo, SET_BLACKLIST } from '../config'
 import { dbService } from '../../api/services/dbService'
 
 const API_CACHE_VERSION = 'v4-sqlite'
@@ -32,9 +30,16 @@ const getRequiredLevel = (seriesId: string): number => {
  */
 const getGenerationName = (seriesId: string): string => {
   const names: Record<string, string> = {
-    'base': 'GENERATION I', 'gym': 'GENERATION I', 'neo': 'GENERATION I', 'lc': 'GENERATION I', 'ecard': 'GENERATION I',
+    'base': 'GENERATION I',
+    'gym': 'GENERATION I',
+    'neo': 'GENERATION I',
+    'lc': 'GENERATION I',
+    'ecard': 'GENERATION I',
     'ex': 'GENERATION III',
-    'dp': 'GENERATION IV', 'pl': 'GENERATION IV', 'hgss': 'GENERATION IV', 'col': 'GENERATION IV',
+    'dp': 'GENERATION IV',
+    'pl': 'GENERATION IV',
+    'hgss': 'GENERATION IV',
+    'col': 'GENERATION IV',
     'bw': 'GENERATION V',
     'xy': 'GENERATION VI',
     'sm': 'GENERATION VII',
@@ -53,28 +58,17 @@ const processCardRow = (row: any) => {
   const card = { ...row }
   
   // Parse các trường JSON thô từ SQLite
-  const jsonFields = ['types', 'attacks', 'abilities', 'weaknesses']
+  const jsonFields = ['types', 'attacks', 'abilities', 'weaknesses', 'resistances', 'pricing']
   jsonFields.forEach(field => {
-    if (typeof card[field] === 'string') {
+    if (typeof card[field] === 'string' && card[field].trim() !== '') {
       try {
         card[field] = JSON.parse(card[field])
       } catch (e) {
-        // Fallback: Nếu không parse được JSON (dạng thô từ build script), 
-        // trả về mảng rỗng để không crash UI
-        card[field] = []
+        // Fallback: Trả về mảng rỗng hoặc null tùy trường
+        card[field] = ['types', 'attacks', 'abilities', 'weaknesses', 'resistances'].includes(field) ? [] : null
       }
     }
   })
-
-  // Giả lập pricing nếu có tcgplayer_id nhưng chưa có giá
-  if (!card.pricing && card.tcgplayer_id) {
-    card.pricing = {
-      tcgplayer: {
-        url: `https://www.tcgplayer.com/product/${card.tcgplayer_id}`,
-        low: 1.0, mid: 5.0, high: 10.0, market: 4.5, directLow: null
-      }
-    }
-  }
 
   return card
 }

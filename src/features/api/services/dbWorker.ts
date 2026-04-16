@@ -5,7 +5,7 @@ let db: any = null;
 async function initDB() {
   try {
     const SQL = await initSqlJs({
-      locateFile: file => `/sql-wasm.wasm`
+      locateFile: () => `/sql-wasm.wasm`
     });
 
     const response = await fetch('/data/cards.sqlite');

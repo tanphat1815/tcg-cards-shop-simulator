@@ -27,7 +27,7 @@ export class DBService {
       );
 
       this.worker.onmessage = (event) => {
-        const { type, results, error, id, type: eventType } = event.data;
+        const { results, error, id, type: eventType } = event.data;
 
         if (eventType === 'INIT_SUCCESS') {
           console.log('🚀 DB Service: Worker initialized');
