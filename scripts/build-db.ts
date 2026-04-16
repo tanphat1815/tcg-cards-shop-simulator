@@ -23,6 +23,19 @@ const db = new Database(DB_PATH);
 
 // Khởi tạo bảng
 db.exec(`
+  CREATE TABLE series (
+    id TEXT PRIMARY KEY,
+    name TEXT
+  );
+
+  CREATE TABLE sets (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    serieId TEXT,
+    cardCount INTEGER,
+    FOREIGN KEY(serieId) REFERENCES series(id)
+  );
+
   CREATE TABLE cards (
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -45,11 +58,16 @@ db.exec(`
     image TEXT,
     pricing TEXT,
     tcgplayer_id TEXT,
-    raw_data TEXT
+    raw_data TEXT,
+    FOREIGN KEY(set_id) REFERENCES sets(id),
+    FOREIGN KEY(series_id) REFERENCES series(id)
   );
   CREATE INDEX idx_set ON cards(set_id);
   CREATE INDEX idx_series ON cards(series_id);
 `);
+
+const insertSeries = db.prepare(`INSERT OR IGNORE INTO series (id, name) VALUES (?, ?)`);
+const insertSet = db.prepare(`INSERT OR IGNORE INTO sets (id, name, serieId, cardCount) VALUES (?, ?, ?, ?)`);
 
 const insertCard = db.prepare(`
   INSERT INTO cards (
@@ -121,12 +139,19 @@ seriesDirs.forEach(seriesName => {
   
   // 1. Lấy Series ID từ file metadata
   let seriesId = seriesName.toLowerCase().replace(/ /g, '-').replace(/[^-a-z0-9]/g, '');
+  let seriesDisplayName = seriesName;
   const seriesMetaFile = path.join(SOURCE_REPO, `${seriesName}.ts`);
   if (fs.existsSync(seriesMetaFile)) {
     const metaContent = fs.readFileSync(seriesMetaFile, 'utf-8');
     const idMatch = metaContent.match(/id:\s*["'](.+?)["']/);
     if (idMatch) seriesId = idMatch[1];
+    
+    const nameMatch = metaContent.match(/en:\s*["'](.+?)["']/);
+    if (nameMatch) seriesDisplayName = nameMatch[1];
   }
+
+  // Insert vào bảng series
+  insertSeries.run(seriesId, seriesDisplayName);
 
   const setDirsOrFiles = fs.readdirSync(seriesPath);
   
@@ -136,15 +161,22 @@ seriesDirs.forEach(seriesName => {
 
     // 2. Lấy Set ID từ file metadata
     let setId = setNameOrFile.toLowerCase().replace(/ /g, '-').replace(/[^-a-z0-9]/g, '');
+    let setDisplayName = setNameOrFile;
     const setMetaFile = path.join(seriesPath, `${setNameOrFile}.ts`);
     if (fs.existsSync(setMetaFile)) {
       const metaContent = fs.readFileSync(setMetaFile, 'utf-8');
       const idMatch = metaContent.match(/id:\s*["'](.+?)["']/);
       if (idMatch) setId = idMatch[1];
+      
+      const nameMatch = metaContent.match(/en:\s*["'](.+?)["']/);
+      if (nameMatch) setDisplayName = nameMatch[1];
     }
 
     const cardFiles = fs.readdirSync(setPath).filter(f => f.endsWith('.ts'));
     
+    // Insert vào bảng sets
+    insertSet.run(setId, setDisplayName, seriesId, cardFiles.length);
+
     cardFiles.forEach(cardFile => {
       const cardPath = path.join(setPath, cardFile);
       const content = fs.readFileSync(cardPath, 'utf-8');
