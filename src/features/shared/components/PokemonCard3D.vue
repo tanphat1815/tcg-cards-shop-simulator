@@ -89,7 +89,7 @@ function onImgLoad() {
     <div class="card__translater">
       <div class="card__rotator">
         <div class="card__front">
-          <img :src="imageSrc" @load="onImgLoad" alt="Pokemon Card Front" />
+          <img :src="imageSrc" @load="onImgLoad" alt="Pokemon Card Front" loading="lazy" />
           <div class="card__shine"></div>
           <div class="card__glare"></div>
           <div v-if="!isLoaded" class="card__loading">
@@ -97,7 +97,7 @@ function onImgLoad() {
           </div>
         </div>
         <div class="card__back">
-          <img src="/assets/cards/back.webp" alt="Pokemon Card Back" />
+          <img src="/assets/cards/back.webp" alt="Pokemon Card Back" loading="lazy" />
         </div>
       </div>
     </div>

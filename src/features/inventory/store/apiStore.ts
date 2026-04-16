@@ -3,9 +3,9 @@ import { useInventoryStore } from './inventoryStore'
 import { useStatsStore } from '../../stats/store/statsStore'
 import { useStaffStore } from '../../staff/store/staffStore'
 import { STOCK_ITEMS, type StockItemInfo, SET_BLACKLIST } from '../config'
-import { apiService, type TcgSetSummary } from '../../../services/apiService'
+import { dbService } from '../../api/services/dbService'
 
-const API_CACHE_VERSION = 'v3'
+const API_CACHE_VERSION = 'v4-sqlite'
 
 const sanitizeId = (source: string) => source.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
 
@@ -45,7 +45,50 @@ const getGenerationName = (seriesId: string): string => {
   return names[seriesId] || 'OTHER SERIES'
 }
 
+/**
+ * Helper to safely parse JSON fields from SQLite
+ */
+const processCardRow = (row: any) => {
+  if (!row) return row
+  const card = { ...row }
+  
+  // Parse các trường JSON thô từ SQLite
+  const jsonFields = ['types', 'attacks', 'abilities', 'weaknesses']
+  jsonFields.forEach(field => {
+    if (typeof card[field] === 'string') {
+      try {
+        card[field] = JSON.parse(card[field])
+      } catch (e) {
+        // Fallback: Nếu không parse được JSON (dạng thô từ build script), 
+        // trả về mảng rỗng để không crash UI
+        card[field] = []
+      }
+    }
+  })
+
+  // Giả lập pricing nếu có tcgplayer_id nhưng chưa có giá
+  if (!card.pricing && card.tcgplayer_id) {
+    card.pricing = {
+      tcgplayer: {
+        url: `https://www.tcgplayer.com/product/${card.tcgplayer_id}`,
+        low: 1.0, mid: 5.0, high: 10.0, market: 4.5, directLow: null
+      }
+    }
+  }
+
+  return card
+}
+
 const buildPrice = (value: number) => Number(value.toFixed(2))
+
+export interface TcgSetSummary {
+  id: string;
+  name: string;
+  serie: { id: string; name: string };
+  cardCount: number;
+  releasedAt?: string;
+  boosters?: string[];
+}
 
 export const useApiStore = defineStore('api', {
   state: () => ({
@@ -53,7 +96,7 @@ export const useApiStore = defineStore('api', {
     shopItems: {} as Record<string, StockItemInfo>,
     isLoading: false,
     error: '',
-    setCardsCache: {} as Record<string, any[]>, // Cache cho cards của từng set
+    setCardsCache: {} as Record<string, any[]>, 
   }),
   getters: {
     sortedShopItems: (state) => Object.values(state.shopItems).sort((a, b) => {
@@ -63,7 +106,7 @@ export const useApiStore = defineStore('api', {
   },
   actions: {
     async initSeriesShop() {
-      // 1. First try to load from LocalStorage to avoid UI blink
+      // 1. First try to load from LocalStorage
       this.loadFromStorage()
 
       if (Object.keys(this.shopItems).length > 0) {
@@ -71,24 +114,34 @@ export const useApiStore = defineStore('api', {
         return
       }
 
-      // 2. Load all main series to build a full shop catalog
-      const mainSeries = ['base', 'ex', 'dp', 'bw', 'xy', 'sm', 'swsh', 'sv']
       this.isLoading = true
 
       try {
-        console.log('[ApiStore] Starting full shop initialization...')
-        this.sets = [] // Reset sets before loading all series
-        for (const sId of mainSeries) {
-          console.log(`[ApiStore] Fetching series: ${sId}`)
-          await this.loadSeriesSets(sId)
-        }
+        console.log('[ApiStore] Starting SQLite Shop initialization...')
         
-        console.log(`[ApiStore] Loading complete. Total sets found: ${this.sets.length}`)
-        this.shopItems = this.generateShopItemsFromSets(this.sets)
-        this.mergeShopItemsIntoInventory()
-        this.saveToStorage()
+        // Fetch ALL sets and series from SQLite
+        const rows = await dbService.query(`
+          SELECT s.*, ser.name as serieName 
+          FROM sets s 
+          JOIN series ser ON s.serieId = ser.id
+          ORDER BY s.id ASC
+        `);
+
+        if (rows && rows.length > 0) {
+          this.sets = rows.map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            serie: { id: row.serieId, name: row.serieName },
+            cardCount: row.cardCount,
+            boosters: []
+          }));
+          
+          this.shopItems = this.generateShopItemsFromSets(this.sets)
+          this.mergeShopItemsIntoInventory()
+          this.saveToStorage()
+        }
       } catch (e) {
-        this.error = 'Failed to initialize Online Shop data'
+        this.error = 'Failed to initialize Local Database Shop data'
         console.error(e)
       } finally {
         this.isLoading = false
@@ -114,57 +167,24 @@ export const useApiStore = defineStore('api', {
         const saved = localStorage.getItem('tcg-shop-api-cache')
         if (saved) {
           const parsed = JSON.parse(saved)
-          
-          // Check version mismatch - Invalidate if old
           if (parsed.version !== API_CACHE_VERSION) {
-            console.warn(`[ApiStore] Cache version mismatch (${parsed.version} vs ${API_CACHE_VERSION}). Clearing cache...`)
             localStorage.removeItem('tcg-shop-api-cache')
             return
           }
-
           this.sets = parsed.sets || []
           this.shopItems = parsed.shopItems || {}
           this.setCardsCache = parsed.setCardsCache || {}
-          console.log('[ApiStore] Restored data from cache:', Object.keys(this.shopItems).length, 'items')
         }
       } catch (e) {
         console.warn('[ApiStore] Failed to load cache:', e)
       }
     },
 
-    async loadSeriesSets(seriesId: string) {
-      this.isLoading = true
-      this.error = ''
-
-      const result = await apiService.getSeriesSets(seriesId)
-
-      if (result.error) {
-        this.error = result.error
-      } else if (result.data) {
-        const mappedSets = result.data.map((set: any) => ({
-          id: set.id,
-          name: set.name,
-          // Đảm bảo có serie info, nếu API không trả về thì dùng seriesId truyền vào
-          serie: set.serie || { id: seriesId, name: seriesId.toUpperCase() },
-          cardCount: set.cardCount,
-          releasedAt: set.releasedAt || set.releaseDate || set.released_at,
-          boosters: Array.isArray(set.boosters) ? set.boosters : []
-        }))
-        this.sets.push(...mappedSets)
-      }
-
-      this.isLoading = false
-    },
-
     generateShopItemsFromSets(sets: TcgSetSummary[]) {
       const items: Record<string, StockItemInfo> = {}
       
       sets.forEach((set, index) => {
-        // Skip blacklisted sets
-        if (SET_BLACKLIST.includes(set.id)) {
-          console.log(`[ApiStore] Skipping blacklisted set: ${set.id} (${set.name})`)
-          return
-        }
+        if (SET_BLACKLIST.includes(set.id)) return
 
         const slug = sanitizeId(set.id || set.name || `set_${index}`)
         const boxId = `box_${slug}`
@@ -195,7 +215,7 @@ export const useApiStore = defineStore('api', {
         items[boxId] = {
           id: boxId,
           name: `${set.name} Booster Box (64 Packs)`,
-          buyPrice: buildPrice(packPrice * 64 * 0.85), // Chiết khấu sỉ
+          buyPrice: buildPrice(packPrice * 64 * 0.85),
           sellPrice: buildPrice(packPrice * 64 * 1.4),
           requiredLevel: Math.max(requiredLevel, 5),
           type: 'box',
@@ -214,74 +234,48 @@ export const useApiStore = defineStore('api', {
       inventoryStore.mergeShopItems(this.shopItems)
     },
 
-    /**
-     * Đảm bảo card có trong cache, nếu không có sẽ fetch lẻ
-     */
     async ensureCardInCache(cardId: string) {
-      // 1. Kiểm tra cache hiện có
       for (const setCards of Object.values(this.setCardsCache)) {
         if (setCards.find((c: any) => c.id === cardId)) return true
       }
 
-      // 2. Nếu không thấy, fetch từ API
-      const result = await apiService.getCardDetails(cardId)
-      if (result.data) {
-        const card = result.data
-        // Giả định card.set.id tồn tại hoặc dùng "misc"
-        const setId = (card as any).set?.id || 'misc'
-        if (!this.setCardsCache[setId]) {
-          this.setCardsCache[setId] = []
-        }
-        if (!this.setCardsCache[setId].find((c: any) => c.id === card.id)) {
-          this.setCardsCache[setId].push(card)
-        }
-        this.saveToStorage()
+      const rows = await dbService.query('SELECT * FROM cards WHERE id = ?', [cardId]);
+      if (rows && rows.length > 0) {
+        const card = processCardRow(rows[0]);
+        const setId = card.set_id || 'misc';
+        if (!this.setCardsCache[setId]) this.setCardsCache[setId] = [];
+        this.setCardsCache[setId].push(card);
+        this.saveToStorage();
         return true
       }
       return false
     },
 
     async loadSetCards(setId: string): Promise<any[]> {
-      if (this.setCardsCache[setId]) {
-        return this.setCardsCache[setId]
-      }
+      if (this.setCardsCache[setId]) return this.setCardsCache[setId]
 
-      const result = await apiService.getSetCards(setId)
-      if (result.error) {
-        console.error('Error loading set cards:', result.error)
-        return []
-      }
-
-      const cards = result.data || []
-      this.setCardsCache[setId] = cards
+      const rows = await dbService.query('SELECT * FROM cards WHERE set_id = ?', [setId]);
+      const cards = (rows || []).map(processCardRow);
+      this.setCardsCache[setId] = cards;
       return cards
     },
 
-    /**
-     * Tự động lưu cache mỗi khi có dữ liệu mới được fetch
-     */
     async getWeightedRandomCardsFromSet(setId: string, count: number = 6) {
-      const result = await apiService.getWeightedRandomCardsFromSet(setId, count)
-      if (result.error) {
-        console.error('Error getting random cards:', result.error)
-        return []
-      }
+      // Logic mở pack: Sử dụng SQL RANDOM() siêu tốc
+      const rows = await dbService.query(
+        'SELECT * FROM cards WHERE set_id = ? ORDER BY RANDOM() LIMIT ?', 
+        [setId, count]
+      );
+      
+      const cards = (rows || []).map(processCardRow);
 
-      const cards = result.data || []
-
-      // Ensure pulled cards are cached for later lookup in Binder
-      if (!this.setCardsCache[setId]) {
-        this.setCardsCache[setId] = []
-      }
+      if (!this.setCardsCache[setId]) this.setCardsCache[setId] = [];
       for (const card of cards) {
         if (!this.setCardsCache[setId].find((c: any) => c.id === card.id)) {
           this.setCardsCache[setId].push(card)
         }
       }
-      
-      // Save updated cache to storage
       this.saveToStorage()
-
       return cards
     },
   }
