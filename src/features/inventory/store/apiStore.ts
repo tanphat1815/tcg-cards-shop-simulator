@@ -3,7 +3,7 @@ import { useInventoryStore } from './inventoryStore'
 import { type StockItemInfo, SET_BLACKLIST } from '../config'
 import { dbService } from '../../api/services/dbService'
 
-const API_CACHE_VERSION = 'v4-sqlite'
+const API_CACHE_VERSION = 'v5-pricing'
 
 const sanitizeId = (source: string) => source.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
 
@@ -113,9 +113,16 @@ export const useApiStore = defineStore('api', {
       try {
         console.log('[ApiStore] Starting SQLite Shop initialization...')
         
-        // Fetch ALL sets and series from SQLite
+        // Fetch ALL sets and series from SQLite, bao gồm cả giá trị thẻ bài trung bình
         const rows = await dbService.query(`
-          SELECT s.*, ser.name as serieName 
+          SELECT s.*, ser.name as serieName,
+                 (
+                   SELECT AVG(CAST(json_extract(pricing, '$.tcgplayer.normal.marketPrice') AS REAL))
+                   FROM cards 
+                   WHERE set_id = s.id 
+                   AND pricing IS NOT NULL 
+                   AND json_extract(pricing, '$.tcgplayer.normal.marketPrice') IS NOT NULL
+                 ) as evPrice
           FROM sets s 
           JOIN series ser ON s.serieId = ser.id
           ORDER BY s.id ASC
@@ -127,10 +134,11 @@ export const useApiStore = defineStore('api', {
             name: row.name,
             serie: { id: row.serieId, name: row.serieName },
             cardCount: row.cardCount,
+            evPrice: row.evPrice || Math.random() * 2, // Lấy EV hoặc mô phỏng nếu API db lỗi json
             boosters: []
           }));
           
-          this.shopItems = this.generateShopItemsFromSets(this.sets)
+          this.shopItems = await this.generateShopItemsFromSets(this.sets)
           this.mergeShopItemsIntoInventory()
           this.saveToStorage()
         }
@@ -174,7 +182,7 @@ export const useApiStore = defineStore('api', {
       }
     },
 
-    generateShopItemsFromSets(sets: TcgSetSummary[]) {
+    async generateShopItemsFromSets(sets: TcgSetSummary[]) {
       const items: Record<string, StockItemInfo> = {}
       
       sets.forEach((set, index) => {
@@ -188,16 +196,29 @@ export const useApiStore = defineStore('api', {
         const generation = getGenerationName(seriesId)
         const requiredLevel = getRequiredLevel(seriesId)
 
-        const boxPrice = buildPrice(40 + Math.random() * 20)
-        const packPrice = buildPrice(boxPrice / 32)
+        // Tính EV (Giá trị kì vọng) cho Pack
+        const ev = (set as any).evPrice || 2; 
+        const baseEVPrice = ev * 10; // Giả định mỗi pack chứa 10 cards, EV thực tế scale theo trung bình giá marketPrice
+        
+        // Bonus giá trị dựa vào độ hot của set/độ hiếm (scale theo requiredLevel, min 10%, max 60%)
+        const rarityBonusPercent = Math.min(60, Math.max(10, (requiredLevel / 80) * 60));
+        
+        // Base Price (cho logic tooltip)
+        const basePackPrice = buildPrice(Math.max(baseEVPrice, 2.5)); // Min pack price $2.5
+        const packPrice = buildPrice(basePackPrice * (1 + rarityBonusPercent / 100)); // Giá nhập đã bao gồm bonus value
+        
+        const baseBoxPrice = buildPrice(basePackPrice * 64 * 0.85); // 85% discount for bulk
+        const boxPrice = buildPrice(packPrice * 64 * 0.85);
 
         const sourceSetId = set.id || slug
 
         items[packId] = {
           id: packId,
           name: `${set.name} Booster Pack`,
-          buyPrice: packPrice,
-          sellPrice: buildPrice(packPrice * 1.6),
+          buyPrice: packPrice, // Giá cửa hàng mua vào từ hệ thống
+          sellPrice: buildPrice(packPrice * 1.6), // Mặc định bán markup 60%
+          basePrice: basePackPrice,
+          rarityBonusPercent: buildPrice(rarityBonusPercent),
           requiredLevel,
           type: 'pack',
           volume: 1,
@@ -209,8 +230,10 @@ export const useApiStore = defineStore('api', {
         items[boxId] = {
           id: boxId,
           name: `${set.name} Booster Box (64 Packs)`,
-          buyPrice: buildPrice(packPrice * 64 * 0.85),
-          sellPrice: buildPrice(packPrice * 64 * 1.4),
+          buyPrice: boxPrice,
+          sellPrice: buildPrice(boxPrice * 1.4), // Mặc định bán Box markup 40%
+          basePrice: baseBoxPrice,
+          rarityBonusPercent: buildPrice(rarityBonusPercent),
           requiredLevel: Math.max(requiredLevel, 5),
           type: 'box',
           volume: 16,

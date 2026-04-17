@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useGameStore } from '../../shop-ui/store/gameStore'
-import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import EnhancedButton from '../../shared/components/EnhancedButton.vue'
 
 const gameStore = useGameStore()
 

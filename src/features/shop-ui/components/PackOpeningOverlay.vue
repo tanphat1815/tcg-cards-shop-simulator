@@ -269,6 +269,28 @@ function getMarketPrice(card: any): string {
   return price !== 'N/A' ? `$${Number(price).toFixed(2)}` : 'N/A';
 }
 
+function getRawPrice(card: any): number {
+  if (!card?.pricing) return 0
+  const tcg = card.pricing.tcgplayer
+  if (tcg) {
+    const categories = ['normal', 'holofoil', 'reverse', 'reverse-holofoil', 'unlimited', 'unlimited-holofoil']
+    for (const cat of categories) {
+      if (tcg[cat]?.marketPrice) return Number(tcg[cat].marketPrice)
+      if (tcg[cat]?.midPrice) return Number(tcg[cat].midPrice)
+    }
+  }
+  const cm = card.pricing.cardmarket
+  if (cm) {
+    const val = cm.avg || cm.trend || cm.avg1 || cm.avg7
+    if (val) return Number(val)
+  }
+  return 0
+}
+
+const formatVND = (priceUsd: number) => {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(priceUsd * 25000)
+}
+
 // ─── Cleanup ─────────────────────────────────────────────────────────────────
 onUnmounted(() => {
   stopAutoReveal()
@@ -344,8 +366,13 @@ onUnmounted(() => {
                 :card="card"
                 :is-back="!flipped[index]"
               />
-              <div v-if="flipped[index]" class="card-price-tag">
+              <div v-if="flipped[index]" class="card-price-tag group/price cursor-help">
                 {{ getMarketPrice(card) }}
+                <!-- VND Tooltip -->
+                <div v-if="getRawPrice(card) > 0" class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max bg-slate-900 text-white text-[11px] font-bold rounded px-2 py-1 shadow-lg opacity-0 invisible group-hover/price:opacity-100 group-hover/price:visible transition-all duration-200 z-50 pointer-events-none border border-slate-700 tracking-wider">
+                  <span class="text-emerald-400">{{ formatVND(getRawPrice(card)) }}</span>
+                  <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-slate-900 rotate-45 border-r border-b border-slate-700"></div>
+                </div>
               </div>
             </div>
           </div>

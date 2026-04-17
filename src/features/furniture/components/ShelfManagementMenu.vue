@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import { useGameStore } from '../../shop-ui/store/gameStore'
 import { useInventoryStore } from '../../inventory/store/inventoryStore'
-import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import EnhancedButton from '../../shared/components/EnhancedButton.vue'
 
 const gameStore = useGameStore()
 const inventoryStore = useInventoryStore()

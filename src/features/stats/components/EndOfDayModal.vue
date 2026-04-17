@@ -5,8 +5,8 @@
  */
 import { useGameStore } from '../../shop-ui/store/gameStore'
 import { useStatsStore } from '../store/statsStore'
-import BaseModal from '../../../components/shared/BaseModal.vue'
-import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import BaseModal from '../../shared/components/BaseModal.vue'
+import EnhancedButton from '../../shared/components/EnhancedButton.vue'
 
 const gameStore = useGameStore()
 const statsStore = useStatsStore()

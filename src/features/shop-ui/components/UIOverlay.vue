@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, ref } from 'vue'
 import { useGameStore } from '../store/gameStore'
-import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import EnhancedButton from '../../shared/components/EnhancedButton.vue'
 
 /**
  * Facade store for managing game state

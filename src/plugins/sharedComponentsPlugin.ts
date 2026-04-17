@@ -10,9 +10,9 @@
  */
 
 import type { App } from 'vue'
-import BaseModal from '../components/shared/BaseModal.vue'
-import ConfirmDialog from '../components/shared/ConfirmDialog.vue'
-import AlertDialog from '../components/shared/AlertDialog.vue'
+import BaseModal from '../features/shared/components/BaseModal.vue'
+import ConfirmDialog from '../features/shared/components/ConfirmDialog.vue'
+import AlertDialog from '../features/shared/components/AlertDialog.vue'
 
 export function registerSharedComponents(app: App) {
   /**

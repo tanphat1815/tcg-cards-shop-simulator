@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useStatsStore } from '../../stats/store/statsStore'
-import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import EnhancedButton from '../../shared/components/EnhancedButton.vue'
 
 const statsStore = useStatsStore()
 const isOpen = ref(false)

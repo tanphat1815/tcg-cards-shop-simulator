@@ -4,8 +4,8 @@ import { useGameStore } from '../../shop-ui/store/gameStore'
 import { useInventoryStore } from '../store/inventoryStore'
 import { useApiStore } from '../store/apiStore'
 import { useCardDetailStore } from '../store/cardDetailStore'
-import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
-import TcgCard from '../../../components/shared/TcgCard.vue'
+import EnhancedButton from '../../shared/components/EnhancedButton.vue'
+import TcgCard from '../../shared/components/TcgCard.vue'
 
 const gameStore = useGameStore()
 const inventoryStore = useInventoryStore()

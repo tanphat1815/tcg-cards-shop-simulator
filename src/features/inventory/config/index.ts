@@ -3,6 +3,8 @@ export interface StockItemInfo {
   name: string;
   buyPrice: number;
   sellPrice: number;
+  basePrice?: number; // True EV (Expected Value) base price from Cards
+  rarityBonusPercent?: number; // Price increment percentage based on Series Rarity/Hotness
   requiredLevel: number;
   type: 'pack' | 'box';
   volume: number; // Volume slot capacity (1 slot = MAX_VOLUME 32)

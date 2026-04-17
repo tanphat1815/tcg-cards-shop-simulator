@@ -417,3 +417,100 @@ html, body {
     page-break-after: always;
   }
 }
+
+/* ===== ENERGY ICON SPRITES ===== */
+.icon-colorless {
+    background-image: url('/assets/energy-types.png');
+    background-position: -25px 0px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-darkness {
+    background-image: url('/assets/energy-types.png');
+    background-position: 0px -50px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-dragon {
+    background-image: url('/assets/energy-types.png');
+    background-position: 0px -25px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-electric {
+    background-image: url('/assets/energy-types.png');
+    background-position: -25px -25px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-fairy {
+    background-image: url('/assets/energy-types.png');
+    background-position: -50px 0px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-fighting {
+    background-image: url('/assets/energy-types.png');
+    background-position: -50px -25px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-fire {
+    background-image: url('/assets/energy-types.png');
+    background-position: 0px 0px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-grass {
+    background-image: url('/assets/energy-types.png');
+    background-position: -25px -50px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-lightning {
+    background-image: url('/assets/energy-types.png');
+    background-position: -50px -50px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-metal {
+    background-image: url('/assets/energy-types.png');
+    background-position: -75px 0px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-psychic {
+    background-image: url('/assets/energy-types.png');
+    background-position: -75px -25px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}
+
+.icon-water {
+    background-image: url('/assets/energy-types.png');
+    background-position: -75px -50px;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+}

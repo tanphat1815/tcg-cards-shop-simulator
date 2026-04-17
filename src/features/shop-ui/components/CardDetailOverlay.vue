@@ -2,11 +2,34 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useCardDetailStore } from '../../inventory/store/cardDetailStore'
 import PokemonCard3D from '../../shared/components/PokemonCard3D.vue'
+import { getSetSymbolUrl } from '../../inventory/utils/expansionUtils'
+import { getSetCode } from '../../inventory/config/setMappings'
+import { watch } from 'vue'
 
 const store = useCardDetailStore()
 const showRawJson = ref(false)
+const symbolError = ref(false)
 
 const card = computed(() => store.selectedCard)
+
+// Reset error state when card changes
+watch(() => card.value?.id, () => {
+  symbolError.value = false
+})
+
+const expansionBadge = computed(() => {
+  if (!card.value?.set_id) return null
+  return getSetCode(card.value.set_id)
+})
+
+const symbolUrl = computed(() => {
+  if (!card.value?.series_id || !card.value?.set_id || symbolError.value) return null
+  return getSetSymbolUrl(card.value.series_id, card.value.set_id)
+})
+
+function handleSymbolError() {
+  symbolError.value = true
+}
 
 function toggleRawJson() {
   showRawJson.value = !showRawJson.value
@@ -42,27 +65,18 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
 })
 
-// Helpers for energy icons
-const getEnergyColor = (type: string) => {
-  const map: Record<string, string> = {
-    'Fire': '#ff4422',
-    'Water': '#3399ff',
-    'Grass': '#77cc55',
-    'Lightning': '#ffcc33',
-    'Psychic': '#ff66aa',
-    'Fighting': '#ffaa55',
-    'Darkness': '#777788',
-    'Metal': '#aaaabb',
-    'Dragon': '#c3a133',
-    'Colorless': '#dde2e2',
-    'Fairy': '#ee99ee',
-  }
-  return map[type] || '#dde2e2'
-}
-
 function getMarketPrice(card: any): string {
   const price = card?.pricing?.tcgplayer?.normal?.marketPrice ?? card?.pricing?.cardmarket?.avg ?? 'N/A';
   return price !== 'N/A' ? `$${Number(price).toFixed(2)}` : 'N/A';
+}
+
+function getRawPrice(card: any): number {
+  const price = card?.pricing?.tcgplayer?.normal?.marketPrice ?? card?.pricing?.cardmarket?.avg ?? 0;
+  return Number(price);
+}
+
+const formatVND = (priceUsd: number) => {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(priceUsd * 25000)
 }
 </script>
 
@@ -76,9 +90,16 @@ function getMarketPrice(card: any): string {
           <!-- LEFT: 3D CARD VISUAL -->
           <div class="visual-pane">
             <PokemonCard3D :card="card" width="440px" />
-            <div class="market-price-tag">
+            
+            <div class="market-price-tag group relative cursor-help">
               <span class="price-label">Market Price</span>
               <span class="price-value">{{ getMarketPrice(card) }}</span>
+              
+              <!-- VND Tooltip -->
+              <div v-if="getRawPrice(card) > 0" class="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-max bg-slate-900 text-white text-sm font-bold rounded-lg px-4 py-2 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none border border-slate-700 font-mono tracking-wider">
+                <span class="text-emerald-400">{{ formatVND(getRawPrice(card)) }}</span>
+                <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45 border-r border-b border-slate-700"></div>
+              </div>
             </div>
           </div>
 
@@ -98,7 +119,7 @@ function getMarketPrice(card: any): string {
                   <span class="hp-value">{{ card.hp }}</span>
                   <div class="type-badge-circle" 
                        v-for="t in card.types" :key="t"
-                       :style="{ background: getEnergyColor(t) }">
+                       :class="'icon-' + t.toLowerCase()">
                   </div>
                 </div>
               </div>
@@ -124,8 +145,7 @@ function getMarketPrice(card: any): string {
                     <div class="energy-costs">
                       <div v-for="(cost, idx) in attack.cost" :key="idx" 
                            class="energy-mini-icon"
-                           :class="cost.toLowerCase()"
-                           :style="{ background: getEnergyColor(cost) }">
+                           :class="'icon-' + cost.toLowerCase()">
                       </div>
                     </div>
                     <span class="attack-name">{{ attack.name }}</span>
@@ -146,7 +166,7 @@ function getMarketPrice(card: any): string {
                   <h3 class="stat-title">Weakness</h3>
                   <div class="stat-content">
                     <div v-for="w in card.weaknesses" :key="w.type" class="stat-pill">
-                      <div class="energy-mini-icon" :style="{ background: getEnergyColor(w.type) }"></div>
+                      <div class="energy-mini-icon" :class="'icon-' + w.type.toLowerCase()"></div>
                       <span class="stat-value">{{ w.value }}</span>
                     </div>
                     <span v-if="!card.weaknesses?.length" class="stat-none">None</span>
@@ -157,7 +177,7 @@ function getMarketPrice(card: any): string {
                   <h3 class="stat-title">Resistance</h3>
                   <div class="stat-content">
                     <div v-for="r in card.resistances" :key="r.type" class="stat-pill">
-                      <div class="energy-mini-icon" :style="{ background: getEnergyColor(r.type) }"></div>
+                      <div class="energy-mini-icon" :class="'icon-' + r.type.toLowerCase()"></div>
                       <span class="stat-value">{{ r.value }}</span>
                     </div>
                     <span v-if="!card.resistances?.length" class="stat-none">None</span>
@@ -168,8 +188,7 @@ function getMarketPrice(card: any): string {
                   <h3 class="stat-title">Retreat Cost</h3>
                   <div class="stat-content energy-costs">
                     <div v-for="n in (card.retreatCost || 0)" :key="n" 
-                         class="energy-mini-icon colorless"
-                         :style="{ background: getEnergyColor('Colorless') }">
+                         class="energy-mini-icon icon-colorless">
                     </div>
                     <span v-if="!card.retreatCost" class="stat-none">None</span>
                   </div>
@@ -178,9 +197,24 @@ function getMarketPrice(card: any): string {
 
               <!-- Set Info Footer -->
               <div class="set-info-footer">
-                <div class="set-details">
-                  <span class="set-name-link">{{ card.set_name }}</span>
-                  <span class="card-number-meta">{{ card.number }}/{{ card.set_cardCount || '??' }} {{ card.rarity }}</span>
+                <div class="set-details-row">
+                  <div class="expansion-badge-container">
+                    <!-- Try Symbol Icon first -->
+                    <img v-if="symbolUrl" 
+                         :src="symbolUrl" 
+                         class="expansion-symbol" 
+                         @error="handleSymbolError" />
+                    
+                    <!-- Fallback to Text Badge if symbol fails or available -->
+                    <span v-else-if="expansionBadge" class="expansion-text-badge">
+                      {{ expansionBadge }}
+                    </span>
+                  </div>
+
+                  <div class="set-details-text">
+                    <span class="set-name-link">{{ card.set_name }}</span>
+                    <span class="card-number-meta">{{ card.number }}/{{ card.set_cardCount || '??' }} {{ card.rarity }}</span>
+                  </div>
                 </div>
                 <!-- Pro icons or rarity icons could go here -->
                 <div v-if="card.artist" class="illustrator-line">
@@ -300,9 +334,6 @@ function getMarketPrice(card: any): string {
 .hp-label { font-size: 0.8rem; font-weight: 900; color: #ef4444; }
 .hp-value { font-size: 1.5rem; font-weight: 900; color: #334155; }
 .type-badge-circle {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
   margin-left: 0.5rem;
   box-shadow: inset 0 -2px 4px rgba(0,0,0,0.3);
 }
@@ -330,9 +361,6 @@ function getMarketPrice(card: any): string {
 .attack-row-top { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
 .energy-costs { display: flex; gap: 4px; }
 .energy-mini-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
   box-shadow: inset 0 -1.5px 3px rgba(0,0,0,0.2);
   border: 1px solid rgba(0,0,0,0.05);
 }
@@ -358,8 +386,53 @@ function getMarketPrice(card: any): string {
 .stat-none { color: #cbd5e1; font-weight: 600; font-size: 0.9rem; }
 
 /* Global Set/Info Footer */
-.set-info-footer { border-top: 2px solid #f1f5f9; padding-top: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; }
-.set-details { display: flex; flex-direction: column; gap: 0.25rem; }
+.set-info-footer { 
+  border-top: 2px solid #f1f5f9; 
+  padding-top: 1.5rem; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 1rem; 
+}
+
+.set-details-row {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.expansion-badge-container {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+}
+
+.expansion-symbol {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.expansion-text-badge {
+  background: #1e293b;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 900;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.set-details-text { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 0.25rem; 
+}
 .set-name-link { color: #2563eb; font-weight: 800; font-size: 1.1rem; }
 .card-number-meta { color: #64748b; font-weight: 600; font-size: 0.9rem; }
 .illustrator-line { color: #94a3b8; font-size: 0.85rem; font-weight: 600; }

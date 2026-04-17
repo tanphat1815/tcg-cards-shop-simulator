@@ -8,8 +8,12 @@ import { useApiStore } from '../store/apiStore'
 import { FURNITURE_ITEMS } from '../../furniture/config'
 import { WORKERS } from '../../staff/config'
 import { EXPANSIONS_LOT_A } from '../../environment/config'
-import EnhancedButton from '../../../components/shared/EnhancedButton.vue'
+import EnhancedButton from '../../shared/components/EnhancedButton.vue'
 import { getPackVisuals, getBoxVisuals, hasCustomVisual } from '../config/assetRegistry'
+
+const formatVND = (priceUsd: number) => {
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(priceUsd * 25000)
+}
 
 const gameStore = useGameStore()
 const statsStore = useStatsStore()
@@ -258,7 +262,7 @@ const handleImageError = (id: string) => {
                     </div>
 
                     <!-- Pricing Info -->
-                    <div class="bg-slate-50 rounded-lg p-2.5 mb-4 border border-slate-100 space-y-1">
+                    <div class="bg-slate-50 rounded-lg p-2.5 mb-4 border border-slate-100 space-y-1 relative group/pricing cursor-help">
                       <div class="flex justify-between items-center">
                         <span class="text-[10px] font-bold text-slate-400 uppercase">Input Price</span>
                         <span class="text-sm font-black text-slate-700">${{ item.buyPrice }}</span>
@@ -266,6 +270,30 @@ const handleImageError = (id: string) => {
                       <div class="flex justify-between items-center">
                         <span class="text-[10px] font-bold text-slate-400 uppercase">Retail Goal</span>
                         <span class="text-sm font-black text-indigo-600">${{ item.sellPrice }}</span>
+                      </div>
+
+                      <!-- Tooltip Chi tiết Định giá -->
+                      <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-xl opacity-0 invisible group-hover/pricing:opacity-100 group-hover/pricing:visible transition-all duration-200 z-50 pointer-events-none border border-slate-700">
+                        <div class="flex flex-col gap-1.5">
+                          <div class="flex justify-between">
+                            <span class="text-slate-400">Giá trị EV gốc:</span>
+                            <span class="font-bold">${{ item.basePrice }}</span>
+                          </div>
+                          <div class="flex justify-between">
+                            <span class="text-indigo-300">Độ hot/Hiếm:</span>
+                            <span class="font-bold text-indigo-400">+{{ item.rarityBonusPercent }}% (+${{ (item.buyPrice - (item.basePrice || 0)).toFixed(2) }})</span>
+                          </div>
+                          <div class="h-px bg-slate-700 my-1"></div>
+                          <div class="flex flex-col">
+                            <span class="text-slate-400 text-[9px] uppercase">Quy đổi nhập hàng:</span>
+                            <span class="font-bold text-emerald-400">{{ formatVND(item.buyPrice) }}</span>
+                          </div>
+                          <div class="flex flex-col text-right mt-1">
+                            <span class="text-slate-400 text-[9px] uppercase">Bán dự kiến:</span>
+                            <span class="font-bold text-yellow-400">{{ formatVND(item.sellPrice) }}</span>
+                          </div>
+                        </div>
+                        <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800 rotate-45 border-r border-b border-slate-700"></div>
                       </div>
                     </div>
 
