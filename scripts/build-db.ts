@@ -251,7 +251,8 @@ seriesDirs.forEach(seriesName => {
       const evolveFrom = extractField(content, 'evolveFrom');
       const stage = extractField(content, 'stage');
       const description = extractField(content, 'description') || extractField(content, 'effect');
-      const retreat = content.match(/retreat:\s*(\d+)/i)?.[1] || '0';
+      const retreatMatch = content.match(/retreat(?:Cost)?:\s*(\d+)/i);
+    const retreat = retreatMatch ? retreatMatch[1] : '0';
       
       const types = JSON.stringify(extractArrayField(content, 'types'));
       const attacks = extractComplexField(content, 'attacks');
