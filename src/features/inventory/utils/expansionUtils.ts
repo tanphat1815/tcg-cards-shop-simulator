@@ -13,5 +13,5 @@ export function getSetSymbolUrl(seriesId: string, setId: string): string {
   const sId = seriesId.toLowerCase();
   const stId = setId.toLowerCase();
   
-  return `https://assets.tcgdex.net/en/${sId}/${stId}/symbol.png`;
+  return `https://assets.tcgdex.net/univ/${sId}/${stId}/symbol.png`;
 }

@@ -362,7 +362,6 @@ const formatVND = (priceUsd: number) => {
 .energy-costs { display: flex; gap: 4px; }
 .energy-mini-icon {
   box-shadow: inset 0 -1.5px 3px rgba(0,0,0,0.2);
-  border: 1px solid rgba(0,0,0,0.05);
 }
 .attack-name { font-size: 1.35rem; font-weight: 900; flex-grow: 1; color: #0f172a; }
 .attack-damage { font-size: 1.35rem; font-weight: 900; color: #334155; }
@@ -409,11 +408,17 @@ const formatVND = (priceUsd: number) => {
 }
 
 .expansion-symbol {
-  height: 32px;
+  height: 50px;
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+  transition: all 0.3s ease;
 }
+
+.expansion-symbol:hover {
+  transform: scale(1.1);
+}
+
 
 .expansion-text-badge {
   background: #1e293b;
