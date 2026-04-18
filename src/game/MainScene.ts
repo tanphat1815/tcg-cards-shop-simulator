@@ -13,6 +13,9 @@ import { EnvironmentManager } from '../features/environment/managers/Environment
 import { FurnitureManager } from '../features/furniture/managers/FurnitureManager'
 import { NPCManager } from '../features/customer/managers/NPCManager'
 import { StaffManager } from '../features/staff/managers/StaffManager'
+import { TownManager } from '../features/gym/managers/TownManager'
+import { useGymStore } from '../features/gym/store/gymStore'
+import gymBuildingImg from '../assets/images/gym_building.svg'
 
 /**
  * MainScene - Trái tim điều khiển (Orchestrator) của trò chơi trong Phaser.
@@ -46,6 +49,13 @@ export default class MainScene extends Phaser.Scene {
   private isPlacementValid: boolean = false
   private staffSprites: Map<string, Phaser.Physics.Arcade.Sprite> = new Map()
   private lastAutoCheckoutTime: number = 0
+  public townManager!: TownManager
+  
+  // Warp Gate & Teleportation
+  private gateHintText!: Phaser.GameObjects.Text
+  private shopToTownGate!: Phaser.GameObjects.Text
+  private gatePathway!: Phaser.GameObjects.Graphics
+  private isTeleporting: boolean = false
   
   // Các lớp đồ họa (Graphics Layers) dùng để vẽ hiệu ứng đặc biệt hoặc Preview
   public previewGraphics!: Phaser.GameObjects.Graphics
@@ -88,6 +98,7 @@ export default class MainScene extends Phaser.Scene {
     this.load.spritesheet('npc', npcImg, { frameWidth: 32, frameHeight: 32 })
     this.load.image('shelf', shelfImg)
     this.load.image('cashier', cashierImg)
+    this.load.image('gym_building', gymBuildingImg)
   }
 
   /**
@@ -100,6 +111,7 @@ export default class MainScene extends Phaser.Scene {
     this.previewGraphics = this.add.graphics().setDepth(DEPTH.PREVIEW)
     this.placementGraphics = this.add.graphics().setDepth(DEPTH.PLACEMENT_VISUALIZER)
     this.editOverlay = this.add.graphics().setDepth(DEPTH.EDIT_OVERLAY).setScrollFactor(0)
+    this.gatePathway = this.add.graphics().setDepth(DEPTH.FLOOR + 0.5)
     
     // 2. Khởi tạo các Managers (Dependency Injection)
     this.environmentManager = new EnvironmentManager(this)
@@ -107,14 +119,22 @@ export default class MainScene extends Phaser.Scene {
     this.npcManager = new NPCManager(this, this.environmentManager)
     this.staffManager = new StaffManager(this)
 
+    // 5. Khởi tạo Gym Leaders (chỉ lần đầu) - TRƯỚC khi init Town để tránh Race Condition
+    const gymStore = useGymStore()
+    gymStore.initializeGymLeaders()
+
+    this.townManager = new TownManager(this)
+
     // 3. Thiết lập Visuals (Animations & UI tĩnh)
     this.setupAnimations()
     this.setupUI()
 
     // 4. Thiết lập vật lý và môi trường khởi đầu
-    this.physics.world.setBounds(0, 0, 3000, 3000)
+    this.physics.world.setBounds(0, 0, 5500, 3000)
+    this.cameras.main.setBounds(0, 0, 5500, 3000)
     this.environmentManager.initializeEnvironment()
     this.furnitureManager.initializeFurniture()
+    this.townManager.initializeTown()
 
     // 5. Khởi tạo Nhân vật người chơi (Đặt tại cửa shop)
     const doorPos = this.environmentManager.getDoorLocation()
@@ -156,6 +176,16 @@ export default class MainScene extends Phaser.Scene {
     this.setupCameraDrag()
     this.environmentManager.refreshEnvironment()
 
+    // 12. Vẽ Cổng đi sang Gym Town (Ban đầu)
+    this.shopToTownGate = this.add.text(0, 0, '⛩️ KHU GYM', { 
+      fontSize: '20px', 
+      backgroundColor: 'rgba(0,0,0,0.6)', 
+      padding: { x: 10, y: 5 },
+      color: '#f6e05e'
+    }).setOrigin(0.5).setDepth(DEPTH.FLOOR + 1)
+    
+    this.refreshGates()
+
     // 12. Cleanup on scene shutdown/destroy
     this.events.once('shutdown', () => {
       console.log("[MainScene] Shutting down, cleaning up store subscriptions...")
@@ -191,6 +221,14 @@ export default class MainScene extends Phaser.Scene {
       color: '#00ffff', 
       fontStyle: 'bold',
       backgroundColor: 'rgba(0,0,0,0.5)',
+      padding: { x: 20, y: 10 }
+    }).setOrigin(0.5).setDepth(DEPTH.UI).setScrollFactor(0).setVisible(false)
+
+    this.gateHintText = this.add.text(this.cameras.main.width / 2, this.cameras.main.height - 100, 'Bấm [E] để dịch chuyển', {
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+      backgroundColor: 'rgba(0,0,0,0.7)',
       padding: { x: 20, y: 10 }
     }).setOrigin(0.5).setDepth(DEPTH.UI).setScrollFactor(0).setVisible(false)
   }
@@ -285,6 +323,7 @@ export default class MainScene extends Phaser.Scene {
         lastExpansionLevel = state.expansionLevel
         lastSettings = currentSettings
         this.environmentManager.refreshEnvironment()
+        this.refreshGates() // Tự động dời cổng đi theo sự mở rộng của Shop
       }
     })
 
@@ -380,12 +419,112 @@ export default class MainScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.cursors.p)) {
       this.runDiagnostics()
     }
+
+    // 8. Chuyển vùng Shop/Town (Phân tích tọa độ để sync store)
+    this.handleAreaTransition()
+
+    // 9. Update Town Manager (detect Gym proximity)
+    if (this.townManager) {
+      this.townManager.update(this.player.x, this.player.y)
+    }
+
+    // 10. Hiển thị gợi ý phím [E] khi gần cổng
+    this.updateGateHints()
+  }
+
+  /** Đồng bộ trạng thái isPlayerInTown dựa trên tọa độ thực tế */
+  private handleAreaTransition() {
+    const gymStore = useGymStore()
+    const isInTownX = this.player.x > TownManager.TOWN_START_X - 100
+
+    if (isInTownX !== gymStore.isPlayerInTown) {
+      gymStore.setPlayerInTown(isInTownX)
+    }
+  }
+
+  /** Làm mới vị trí cổng và vẽ đoạn đường dựa trên kích thước Shop hiện tại */
+  public refreshGates() {
+    if (!this.environmentManager || !this.shopToTownGate) return
+
+    const doorPos = this.environmentManager.getDoorLocation()
+    const gateY = doorPos.y + 150
+    
+    // 1. Dời cổng ⛩️
+    this.shopToTownGate.setPosition(doorPos.x, gateY)
+
+    // 2. Vẽ đoạn đường nối (Asphalt pathway)
+    this.gatePathway.clear()
+    this.gatePathway.fillStyle(0x34495e, 1) // Màu nhựa đường đồng nhất
+    const pathW = 100
+    const pathH = gateY - doorPos.y + 30
+    this.gatePathway.fillRect(doorPos.x - pathW/2, doorPos.y, pathW, pathH)
+
+    // Viền đường
+    this.gatePathway.lineStyle(2, 0x2c3e50, 0.5)
+    this.gatePathway.strokeRect(doorPos.x - pathW/2, doorPos.y, pathW, pathH)
+  }
+
+  /** Hiển thị hint [E] khi đứng gần cổng dịch chuyển */
+  private updateGateHints() {
+    if (this.isTeleporting) {
+      this.gateHintText.setVisible(false)
+      return
+    }
+
+    const doorPos = this.environmentManager.getDoorLocation()
+    const distToTown = Phaser.Math.Distance.Between(this.player.x, this.player.y, doorPos.x, doorPos.y + 150)
+    const distToShop = Phaser.Math.Distance.Between(this.player.x, this.player.y, TownManager.TOWN_START_X + 50, 500)
+
+    if (distToTown < 80) {
+      this.gateHintText.setText('Bấm [E] để tới Town').setVisible(true)
+    } else if (distToShop < 80) {
+      this.gateHintText.setText('Bấm [E] về Shop').setVisible(true)
+    } else {
+      this.gateHintText.setVisible(false)
+    }
+  }
+
+  /** Thực hiện hiệu ứng dịch chuyển chuyên nghiệp */
+  private performTeleport(targetX: number, targetY: number, toTown: boolean) {
+    if (this.isTeleporting) return
+    this.isTeleporting = true
+    
+    const gymStore = useGymStore()
+
+    // 1. Fade Out
+    this.cameras.main.fadeOut(300, 0, 0, 0)
+    
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      // 2. Dịch chuyển tọa độ
+      this.player.setPosition(targetX, targetY)
+      gymStore.setPlayerInTown(toTown)
+      
+      // Khóa di chuyển 1 chút để tránh lỗi kẹt
+      this.player.setVelocity(0)
+      
+      // 3. Fade In
+      this.cameras.main.fadeIn(300, 0, 0, 0)
+      this.isTeleporting = false
+    })
   }
 
   /**
    * Tương tác của người chơi với vật thể gần nhất khi nhấn E.
    */
   private handlePlayerInteraction(store: any) {
+    // Ưu tiên 0: Cổng dịch chuyển (Teleport)
+    const doorPos = this.environmentManager.getDoorLocation()
+    const distToTown = Phaser.Math.Distance.Between(this.player.x, this.player.y, doorPos.x, doorPos.y + 150)
+    const distToShop = Phaser.Math.Distance.Between(this.player.x, this.player.y, TownManager.TOWN_START_X + 50, 500)
+
+    if (distToTown < 80) {
+      this.performTeleport(TownManager.TOWN_START_X + 150, 500, true)
+      return
+    } else if (distToShop < 80) {
+      this.performTeleport(doorPos.x, doorPos.y + 100, false)
+      return
+    }
+
     // Ưu tiên 1: Thanh toán tại quầy
     let nearestCashier = this.getNearestFromGroup(this.furnitureManager.cashierGroup, 80)
     if (nearestCashier && store.waitingCustomers > 0) {

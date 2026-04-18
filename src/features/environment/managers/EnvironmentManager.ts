@@ -242,13 +242,13 @@ export class EnvironmentManager {
       this.shopBounds = { x: startX, y: startY, w: shopW, h: shopH }
       this.doorLocation = { x: startX + shopW / 2, y: startY + shopH }
 
-      // Cập nhật Camera Bounds để người chơi không bơi ra khỏi bản đồ
-      this.scene.cameras.main.setBounds(0, 0, 3000, 3000)
+      // Cập nhật Camera Bounds để người chơi không bơi ra khỏi bản đồ (Mở rộng cho Khu Gym)
+      this.scene.cameras.main.setBounds(0, 0, 5500, 3000)
 
-      // Vẽ Layer đường phố/nền tối
+      // Vẽ Layer đường phố/nền tối (Mở rộng cho Khu Gym)
       this.outsideGraphics.clear()
       this.outsideGraphics.fillStyle(0x1a1a1a, 1) // Dark street
-      this.outsideGraphics.fillRect(0, 0, 3000, 3000)
+      this.outsideGraphics.fillRect(0, 0, 5500, 3000)
 
       // Vẽ Layer sàn Shop (Slate floor)
       this.floorGraphics.clear()

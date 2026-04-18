@@ -6,6 +6,7 @@ import { useCustomerStore } from '../../customer/store/customerStore'
 import { useUIStore } from './uiStore'
 import { useStaffStore } from '../../staff/store/staffStore'
 import { useApiStore } from '../../inventory/store/apiStore'
+import { useGymStore } from '../../gym/store/gymStore'
 
 /**
  * GameStore (Facade Pattern) - Trung tâm điều phối dữ liệu của toàn bộ ứng dụng.
@@ -74,6 +75,11 @@ export const useGameStore = defineStore('game', {
 
     // === Staff & Workers (Modules: staffStore) ===
     hiredWorkers: () => useStaffStore().hiredWorkers,
+
+    // === Gym System (Modules: gymStore) ===
+    gymLeaders: () => useGymStore().gymLeaders,
+    activeGym: () => useGymStore().activeGym,
+    isPlayerInTown: () => useGymStore().isPlayerInTown,
 
     // === Derived Stats ===
     requiredExp: () => useStatsStore().requiredExp,
@@ -166,6 +172,9 @@ export const useGameStore = defineStore('game', {
     },
     terminateWorker(instanceId: string) { useStaffStore().terminateWorker(instanceId) },
 
+    // --- Gym Actions ---
+    initGymLeaders() { useGymStore().initializeGymLeaders() },
+
     /**
      * Tích hợp loadSave từ tất cả các module.
      */
@@ -184,6 +193,7 @@ export const useGameStore = defineStore('game', {
           useFurnitureStore().loadFurniture(parsed)
           useCustomerStore().loadCustomerState(parsed)
           useStaffStore().loadStaff(parsed)
+          useGymStore().loadGymState(parsed)
           
           useApiStore().initSeriesShop()
         } catch (e) {
@@ -213,7 +223,8 @@ export const useGameStore = defineStore('game', {
         placedTables: furniture.placedTables,
         placedCashiers: furniture.placedCashiers,
         purchasedFurniture: furniture.purchasedFurniture,
-        shopState: customer.shopState
+        shopState: customer.shopState,
+        gymLeaders: useGymStore().gymLeaders
       }
       localStorage.setItem('tcg-shop-save', JSON.stringify(saveData))
     },

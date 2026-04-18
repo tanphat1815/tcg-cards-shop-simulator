@@ -1,0 +1,15 @@
+<!-- src/assets/images/gym_building.svg -->
+<svg width="64" height="80" xmlns="http://www.w3.org/2000/svg">
+  <!-- Thân tòa nhà -->
+  <rect x="4" y="24" width="56" height="52" fill="#4a5568" rx="2"/>
+  <!-- Mái nhà tam giác -->
+  <polygon points="0,24 32,4 64,24" fill="#2d3748"/>
+  <!-- Cửa chính -->
+  <rect x="22" y="52" width="20" height="24" fill="#2c5282" rx="2"/>
+  <!-- Cửa sổ trái -->
+  <rect x="8" y="36" width="14" height="12" fill="#bee3f8" rx="1"/>
+  <!-- Cửa sổ phải -->
+  <rect x="42" y="36" width="14" height="12" fill="#bee3f8" rx="1"/>
+  <!-- Ký hiệu "G" trên mái -->
+  <text x="32" y="18" text-anchor="middle" fill="#f6e05e" font-size="12" font-weight="bold" font-family="monospace">G</text>
+</svg>

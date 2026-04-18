@@ -61,6 +61,9 @@ export const useBattleStore = defineStore('battle', {
 
     /** Xem dialog help hay không */
     showHelp: false,
+
+    /** ID của Gym đang thách đấu (nếu có) */
+    currentGymId: null as string | null,
   }),
 
   getters: {
@@ -209,6 +212,66 @@ export const useBattleStore = defineStore('battle', {
     },
 
     /**
+     * Mở Battle Arena với deck do Gym Leader cung cấp sẵn.
+     * Bỏ qua màn hình SETUP, vào thẳng BATTLE.
+     * @param enemyDeck Deck 5 thẻ đã được gymStore generate
+     * @param gymId ID của Gym Leader (để mark defeated sau khi thắng)
+     */
+    async openBattleWithDeck(enemyDeck: any[], gymId: string) {
+      // Validation: cần player có ít nhất 1 thẻ trong binder
+      const { useInventoryStore } = await import('../../inventory/store/inventoryStore')
+      const { useApiStore } = await import('../../inventory/store/apiStore')
+      const inventoryStore = useInventoryStore()
+      const apiStore = useApiStore()
+
+      // Lấy deck player từ binder (lấy tối đa 5 thẻ đầu tiên)
+      const binderCardIds = Object.keys(inventoryStore.personalBinder).slice(0, 5)
+      if (binderCardIds.length === 0) {
+        this.addLog('⚠️ Bạn chưa có thẻ bài trong Binder! Hãy mở Pack trước.', 'system')
+        return
+      }
+
+      const playerCards: any[] = []
+      for (const cardId of binderCardIds) {
+        for (const setCards of Object.values(apiStore.setCardsCache)) {
+          const found = (setCards as any[]).find((c: any) => c.id === cardId)
+          if (found) { playerCards.push(found); break }
+        }
+      }
+
+      this.isOpen = true
+      this.currentGymId = gymId  // Lưu lại để mark defeated khi thắng
+      this.mode = 'BASIC'
+      this.phase = 'BATTLE'
+      this.currentTurn = 'player'
+      this.turnNumber = 1
+      this.hasAttachedEnergyThisTurn = false
+      this.selectedAttackIndex = null
+      this.isEnemyThinking = false
+      this.logs = []
+      this.winner = null
+
+      // Khởi tạo đội player từ binder
+      this.playerTeam = [
+        ...playerCards.map((card, i) => BattleLogic.createBattleCard(card, i)),
+        ...Array(Math.max(0, 5 - playerCards.length)).fill(null),
+      ]
+
+      // Khởi tạo đội Gym Leader từ deck được generate
+      const validEnemyDeck = enemyDeck.filter(Boolean).slice(0, 5)
+      this.enemyTeam = [
+        ...validEnemyDeck.map((card, i) => BattleLogic.createBattleCard(card, i)),
+        ...Array(Math.max(0, 5 - validEnemyDeck.length)).fill(null),
+      ]
+
+      this.addLog('🏟️ Trận đấu Gym bắt đầu!', 'system')
+      this.addLog(`Pokémon của bạn: ${this.playerTeam[0]?.name} lên tiền tuyến!`, 'info')
+      this.addLog(`Gym Leader: ${this.enemyTeam[0]?.name} lên tiền tuyến!`, 'info')
+
+      useGameStore().pauseGame()
+    },
+
+    /**
      * Đóng Battle Arena, reset state, resume Phaser.
      */
     closeBattle() {
@@ -287,7 +350,7 @@ export const useBattleStore = defineStore('battle', {
       this.selectedAttackIndex = null
 
       // Kiểm tra winner
-      if (this.checkAndSetWinner()) return
+      if (await this.checkAndSetWinner()) return
 
       // Kết thúc lượt người chơi → AI thực hiện
       this.endPlayerTurn()
@@ -435,7 +498,7 @@ export const useBattleStore = defineStore('battle', {
       }
 
       this.isEnemyThinking = false
-      if (this.checkAndSetWinner()) return
+      if (await this.checkAndSetWinner()) return
       this.currentTurn = 'player'
     },
 
@@ -465,7 +528,7 @@ export const useBattleStore = defineStore('battle', {
       this.addLog(`💫 ${bench.name} của bạn lên tiền tuyến!`, 'info')
     },
 
-    checkAndSetWinner(): boolean {
+    async checkAndSetWinner(): Promise<boolean> {
       const winner = BattleLogic.checkWinner(this.playerTeam, this.enemyTeam)
       if (winner) {
         this.winner = winner
@@ -474,6 +537,14 @@ export const useBattleStore = defineStore('battle', {
           winner === 'player' ? '🏆 Bạn đã chiến thắng!' : '💔 Bạn đã thua!',
           'system'
         )
+
+        // Nếu thắng Gym Leader → Cập nhật trạng thái Gym
+        if (winner === 'player' && this.currentGymId) {
+          const { useGymStore } = await import('../../gym/store/gymStore')
+          useGymStore().defeatGymLeader(this.currentGymId)
+          this.currentGymId = null
+        }
+        
         return true
       }
       return false
