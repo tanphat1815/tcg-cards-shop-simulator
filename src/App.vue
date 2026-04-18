@@ -14,6 +14,7 @@ import CardDetailOverlay from './features/shop-ui/components/CardDetailOverlay.v
 import BattleArena from './features/battle/components/BattleArena.vue'
 import GymOverlay from './features/gym/components/GymOverlay.vue'
 import CartSidebar from './features/inventory/components/CartSidebar.vue'
+import SetPriceModal from './features/inventory/components/SetPriceModal.vue'
 import { useGameStore } from './features/shop-ui/store/gameStore'
 import { useStatsStore } from './features/stats/store/statsStore'
 import { useInventoryStore } from './features/inventory/store/inventoryStore'
@@ -56,5 +57,6 @@ onMounted(() => {
     <BattleArena />
     <GymOverlay />
     <CartSidebar />
+    <SetPriceModal />
   </div>
 </template>

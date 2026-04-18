@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import type { CartState } from '../types/cart'
 import { getPackVisuals, getBoxVisuals } from '../config/assetRegistry'
-import { useInventoryStore } from '../store/inventoryStore'
 import { useStatsStore } from '../../stats/store/statsStore'
+import { useDeliveryStore } from './deliveryStore'
 
 export const useCartStore = defineStore('cart', {
   state: (): CartState => ({
@@ -67,31 +67,45 @@ export const useCartStore = defineStore('cart', {
     },
 
     /**
-     * Thực hiện thanh toán: duyệt từng CartItem, gọi inventoryStore.buyStock
-     * Trả về { success: boolean, failedItems: string[] }
+     * Thực hiện thanh toán:
+     * - KIỂM TRA đủ tiền.
+     * - TRỪ TIỀN (statsStore.spendMoney).
+     * - SCHEDULE giao hàng (deliveryStore).
+     * - KHÔNG add thẳng vào inventoryStore.buyStock (Hàng phải giao mới có).
      */
     checkout(): { success: boolean; failedItems: string[] } {
-      const inventoryStore = useInventoryStore()
       const statsStore = useStatsStore()
+      const deliveryStore = useDeliveryStore()
 
-      const failedItems: string[] = []
+      if (this.items.length === 0) return { success: false, failedItems: ['Giỏ hàng trống'] }
+
       const totalCost = this.subtotal
-
       if (statsStore.money < totalCost) {
         return { success: false, failedItems: ['Không đủ tiền'] }
       }
 
-      for (const cartItem of this.items) {
-        const ok = inventoryStore.buyStock(cartItem.itemId, cartItem.quantity)
-        if (!ok) failedItems.push(cartItem.name)
-      }
+      // 1. Trừ tiền
+      const ok = statsStore.spendMoney(totalCost)
+      if (!ok) return { success: false, failedItems: ['Giao dịch tiền tệ thất bại'] }
 
-      if (failedItems.length === 0) {
-        this.items = []
-        this.isOpen = false
-        return { success: true, failedItems: [] }
-      }
-      return { success: false, failedItems }
+      // 2. Chụp snapshot để giao hàng
+      const snapshot = this.items.map(i => ({
+        itemId: i.itemId,
+        name: i.name,
+        type: i.type,
+        quantity: i.quantity,
+        imageUrl: i.imageUrl,
+        sourceSetId: i.sourceSetId,
+      }))
+
+      // 3. Đưa vào hàng chờ giao (Phaser sẽ spawn box)
+      deliveryStore.scheduleDelivery(snapshot)
+
+      // 4. Clear giỏ hàng
+      this.items = []
+      this.isOpen = false
+
+      return { success: true, failedItems: [] }
     },
   },
 })

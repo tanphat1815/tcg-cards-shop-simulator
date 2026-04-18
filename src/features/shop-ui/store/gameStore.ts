@@ -133,6 +133,9 @@ export const useGameStore = defineStore('game', {
         const shelfId = useUIStore().activeShelfId
         if (shelfId) useFurnitureStore().fillTier(shelfId, itemId, tierIndex) 
     },
+    fillTierFromItem(shelfId: string, itemId: string, tierIndex: number, quantity: number) {
+        useFurnitureStore().fillTierFromItem(shelfId, itemId, tierIndex, quantity)
+    },
     clearTier(shelfId: string, tierIndex: number) { useFurnitureStore().clearTier(shelfId, tierIndex) },
     clearEntireShelf() { 
         const shelfId = useUIStore().activeShelfId
