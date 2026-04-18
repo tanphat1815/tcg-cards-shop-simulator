@@ -306,6 +306,17 @@ export default class MainScene extends Phaser.Scene {
       if (state.showEndDayModal) {
         this.npcManager.cleanupAllNPCs()
       }
+
+      // Tạm dừng/Tiếp tục Phaser khi Battle Arena mở/đóng để tiết kiệm CPU
+      if (state.isPaused) {
+        // Pause vòng lặp game — NPC, physics, animation đều dừng lại
+        this.scene.pause()
+      } else {
+        // Resume lại khi Battle kết thúc
+        if (this.scene.isPaused()) {
+          this.scene.resume()
+        }
+      }
     })
 
     // CHỐT: Thu thập tất cả các hàm hủy đăng ký để dọn dẹp khi scene shutdown

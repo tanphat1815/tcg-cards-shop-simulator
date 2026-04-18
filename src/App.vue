@@ -11,6 +11,7 @@ import DevModeMenu from './features/shop-ui/components/DevModeMenu.vue'
 import BuildMenu from './features/furniture/components/BuildMenu.vue'
 import SettingsModal from './features/shop-ui/components/SettingsModal.vue'
 import CardDetailOverlay from './features/shop-ui/components/CardDetailOverlay.vue'
+import BattleArena from './features/battle/components/BattleArena.vue'
 import { useGameStore } from './features/shop-ui/store/gameStore'
 import { useStatsStore } from './features/stats/store/statsStore'
 import { useInventoryStore } from './features/inventory/store/inventoryStore'
@@ -49,5 +50,7 @@ onMounted(() => {
     <BuildMenu />
     <SettingsModal />
     <CardDetailOverlay />
+    <!-- Battle Arena sử dụng Teleport nên sẽ tự render vào body -->
+    <BattleArena />
   </div>
 </template>

@@ -21,6 +21,9 @@ import { useApiStore } from '../../inventory/store/apiStore'
 export const useGameStore = defineStore('game', {
   state: () => ({
     // Facade không lưu trữ state trực tiếp, chỉ đóng vai trò ủy quyền (Delegation).
+    // === Battle Engine Control ===
+    /** Phaser scene có đang bị pause không (khi Battle Arena mở) */
+    isPaused: false,
   }),
   
   /**
@@ -239,6 +242,22 @@ export const useGameStore = defineStore('game', {
       })
 
       this.saveGame()
-    }
+    },
+
+    // === Battle Engine Control ===
+    /**
+     * Phát tín hiệu tạm dừng Phaser (trong khi Battle Arena đang mở).
+     * MainScene lắng nghe isPaused để gọi this.scene.pause().
+     */
+    pauseGame() {
+      this.isPaused = true
+    },
+
+    /**
+     * Phát tín hiệu tiếp tục Phaser (khi Battle Arena đóng).
+     */
+    resumeGame() {
+      this.isPaused = false
+    },
   }
 })

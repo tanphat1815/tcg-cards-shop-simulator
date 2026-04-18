@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, watch, ref } from 'vue'
 import { useGameStore } from '../store/gameStore'
+import { useBattleStore } from '../../battle/store/battleStore'
 import EnhancedButton from '../../shared/components/EnhancedButton.vue'
 
 /**
  * Facade store for managing game state
  */
 const gameStore = useGameStore()
+const battleStore = useBattleStore()
 
 // Clock logic - Removed from Vue to keep single source of truth in Phaser MainScene
 
@@ -149,7 +151,7 @@ const isInventoryMinimized = ref(false)
             </EnhancedButton>
           </div>
 
-          <div class="mt-5 pt-5 border-t border-gray-700/50 flex gap-3">
+          <div class="mt-5 pt-5 border-t border-gray-700/50 flex flex-wrap gap-3">
             <EnhancedButton
               variant="primary"
               size="md"
@@ -176,6 +178,14 @@ const isInventoryMinimized = ref(false)
               title="Mở menu cài đặt"
             >
               CONFIG
+            </EnhancedButton>
+            <EnhancedButton
+              variant="danger"
+              size="md"
+              @click="battleStore.openSetup()"
+              title="Mở Battle Arena - Đấu bài Pokémon!"
+            >
+              ⚔️ BATTLE
             </EnhancedButton>
           </div>
         </div>
