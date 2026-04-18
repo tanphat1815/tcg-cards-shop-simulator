@@ -15,7 +15,7 @@
  * Click → retreat (bench player) / không hành động (enemy, active)
  * Right-Click → Xem chi tiết thẻ bài
  */
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBattleStore } from '../store/battleStore'
 import { useCardDetailStore } from '../../inventory/store/cardDetailStore'
@@ -34,6 +34,48 @@ const {
   canAct,
   playerAliveCount, enemyAliveCount,
 } = storeToRefs(store)
+
+// ── Scaling Logic ───────────────────────────────────────────────
+const battlefieldRef = ref<HTMLElement | null>(null)
+const scaleFactor = ref(1)
+
+// Kích thước "thiết kế" của sân đấu
+const DESIGN_WIDTH = 1100
+const DESIGN_HEIGHT = 860
+
+function updateScale() {
+  if (!battlefieldRef.value) return
+  
+  const containerWidth = battlefieldRef.value.clientWidth
+  const containerHeight = battlefieldRef.value.clientHeight
+  
+  // Tính tỷ lệ scale nhỏ nhất giữa chiều rộng và chiều cao
+  const scaleX = containerWidth / DESIGN_WIDTH
+  const scaleY = containerHeight / DESIGN_HEIGHT
+  
+  // Chúng ta chỉ scale nhỏ xuống nếu container bé hơn thiết kế, 
+  // hoặc scale lên nếu container lớn hơn. 
+  // Math.min đảm bảo toàn bộ nội dung luôn nằm trong khung nhìn.
+  scaleFactor.value = Math.min(scaleX, scaleY, 1.2) // Giới hạn max scale 1.2 cho đỡ vỡ ảnh
+}
+
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  updateScale()
+  resizeObserver = new ResizeObserver(() => {
+    updateScale()
+  })
+  if (battlefieldRef.value) {
+    resizeObserver.observe(battlefieldRef.value)
+  }
+})
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+  }
+})
 
 // ── Helpers ─────────────────────────────────────────────────────
 function hpPercent(card: BattleCard | null): number {
@@ -91,243 +133,245 @@ const enemyPrizesWon = computed(() =>
 </script>
 
 <template>
-  <div class="battlefield">
-    <!-- Pokéball Background Watermark -->
-    <div class="pokeball-bg">
-      <div class="pokeball-upper"></div>
-      <div class="pokeball-lower"></div>
-      <div class="pokeball-center"></div>
-    </div>
+  <div class="battlefield" ref="battlefieldRef">
+    <div class="field-scaler" :style="{ transform: `translate(-50%, -50%) scale(${scaleFactor})` }">
+      <!-- Pokéball Background Watermark -->
+      <div class="pokeball-bg">
+        <div class="pokeball-upper"></div>
+        <div class="pokeball-lower"></div>
+        <div class="pokeball-center"></div>
+      </div>
 
-    <!-- ───────── ENEMY SIDE (top, flipped) ───────── -->
-    <div class="side enemy-side">
-      <!-- Cột 1: Prize Cards (Trái) -->
-      <div class="grid-col left-col">
-        <div class="prize-zone enemy-prize">
-          <div class="zone-label">PRIZE<br>CARDS</div>
-          <div class="prize-slots">
-            <div
-              v-for="i in 6"
-              :key="'ep-' + i"
-              class="prize-card"
-              :class="{ won: i <= enemyPrizesWon }"
-            >
-              <span v-if="i <= enemyPrizesWon">❌</span>
-              <span v-else>?</span>
+      <!-- ───────── ENEMY SIDE (top, flipped) ───────── -->
+      <div class="side enemy-side">
+        <!-- Cột 1: Prize Cards (Trái) -->
+        <div class="grid-col left-col">
+          <div class="prize-zone enemy-prize">
+            <div class="zone-label">PRIZE<br>CARDS</div>
+            <div class="prize-slots">
+              <div
+                v-for="i in 6"
+                :key="'ep-' + i"
+                class="prize-card"
+                :class="{ won: i <= enemyPrizesWon }"
+              >
+                <span v-if="i <= enemyPrizesWon">❌</span>
+                <span v-else>?</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Cột 2: Khu vực chiến đấu (Giữa) -->
-      <div class="grid-col center-col">
-        <!-- Enemy Bench (Hàng trên cùng của lưới giữa) -->
-        <div class="side-row bench-row">
-          <div class="bench-zone">
-            <div class="zone-label">BENCH</div>
-            <div class="bench-cards">
-              <div
-                v-for="(card, idx) in enemyBench"
-                :key="'eb-' + idx"
-                class="bench-slot"
-                :class="{ 'has-card': !!card, 'knocked-out': card?.isKnockedOut }"
-                @contextmenu.prevent="card && !card.isKnockedOut && onCardRightClick(card)"
-              >
-                <template v-if="card && !card.isKnockedOut">
-                  <PokemonCard3D
-                    :card="card.rawCardData ?? card"
-                    :width="cardWidth(false)"
-                    :disable-tilt="true"
-                    :is-hit="card.isHit"
-                  />
-                  <div class="mini-hp-bar">
-                    <div class="mini-hp-fill"
-                      :style="{ width: hpPercent(card) + '%', background: hpColor(card) }">
+        <!-- Cột 2: Khu vực chiến đấu (Giữa) -->
+        <div class="grid-col center-col">
+          <!-- Enemy Bench (Hàng trên cùng của lưới giữa) -->
+          <div class="side-row bench-row">
+            <div class="bench-zone">
+              <div class="zone-label">BENCH</div>
+              <div class="bench-cards">
+                <div
+                  v-for="(card, idx) in enemyBench"
+                  :key="'eb-' + idx"
+                  class="bench-slot"
+                  :class="{ 'has-card': !!card, 'knocked-out': card?.isKnockedOut }"
+                  @contextmenu.prevent="card && !card.isKnockedOut && onCardRightClick(card)"
+                >
+                  <template v-if="card && !card.isKnockedOut">
+                    <PokemonCard3D
+                      :card="card.rawCardData ?? card"
+                      :width="cardWidth(false)"
+                      :disable-tilt="true"
+                      :is-hit="card.isHit"
+                    />
+                    <div class="mini-hp-bar">
+                      <div class="mini-hp-fill"
+                        :style="{ width: hpPercent(card) + '%', background: hpColor(card) }">
+                      </div>
                     </div>
+                  </template>
+                  <div v-else class="slot-ghost enemy-ghost">
+                    <span>{{ card?.isKnockedOut ? '💀' : '' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Enemy Active (Hàng dưới, sát vạch kẻ ngang) -->
+          <div class="active-row">
+            <div class="stadium-label">STADIUM</div>
+            <div class="active-zone enemy-active">
+              <div class="zone-label">ACTIVE</div>
+              <div
+                class="active-card"
+                :class="{ 'knocked-out': enemyActive?.isKnockedOut }"
+                @contextmenu.prevent="enemyActive && !enemyActive.isKnockedOut && onCardRightClick(enemyActive)"
+              >
+                <template v-if="enemyActive && !enemyActive.isKnockedOut">
+                  <PokemonCard3D
+                    :card="enemyActive.rawCardData ?? enemyActive"
+                    :width="cardWidth(true)"
+                    :disable-tilt="true"
+                    :is-hit="enemyActive.isHit"
+                  />
+                  <div class="hp-bar-container">
+                    <div class="hp-bar-track">
+                      <div
+                        class="hp-bar-fill"
+                        :style="{ width: hpPercent(enemyActive) + '%', background: hpColor(enemyActive) }"
+                      ></div>
+                    </div>
+                    <span class="hp-label">{{ enemyActive.currentHp }}/{{ enemyActive.hp }}</span>
+                  </div>
+                  <div class="card-name-label">{{ enemyActive.name }}</div>
+                  <div v-if="enemyActive.attachedEnergies.length > 0" class="energy-badges">
+                    <EnergyIcon v-for="(e,ei) in enemyActive.attachedEnergies" :key="ei" :type="e" size="sm" class="energy-badge" />
                   </div>
                 </template>
-                <div v-else class="slot-ghost enemy-ghost">
-                  <span>{{ card?.isKnockedOut ? '💀' : '' }}</span>
+                <div v-else class="slot-ghost">
+                  <span>{{ enemyActive?.isKnockedOut ? '💀' : '—' }}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Enemy Active (Hàng dưới, sát vạch kẻ ngang) -->
-        <div class="active-row">
-          <div class="stadium-label">STADIUM</div>
-          <div class="active-zone enemy-active">
-            <div class="zone-label">ACTIVE</div>
-            <div
-              class="active-card"
-              :class="{ 'knocked-out': enemyActive?.isKnockedOut }"
-              @contextmenu.prevent="enemyActive && !enemyActive.isKnockedOut && onCardRightClick(enemyActive)"
-            >
-              <template v-if="enemyActive && !enemyActive.isKnockedOut">
-                <PokemonCard3D
-                  :card="enemyActive.rawCardData ?? enemyActive"
-                  :width="cardWidth(true)"
-                  :disable-tilt="true"
-                  :is-hit="enemyActive.isHit"
-                />
-                <div class="hp-bar-container">
-                  <div class="hp-bar-track">
-                    <div
-                      class="hp-bar-fill"
-                      :style="{ width: hpPercent(enemyActive) + '%', background: hpColor(enemyActive) }"
-                    ></div>
-                  </div>
-                  <span class="hp-label">{{ enemyActive.currentHp }}/{{ enemyActive.hp }}</span>
-                </div>
-                <div class="card-name-label">{{ enemyActive.name }}</div>
-                <div v-if="enemyActive.attachedEnergies.length > 0" class="energy-badges">
-                  <EnergyIcon v-for="(e,ei) in enemyActive.attachedEnergies" :key="ei" :type="e" size="sm" class="energy-badge" />
-                </div>
-              </template>
-              <div v-else class="slot-ghost">
-                <span>{{ enemyActive?.isKnockedOut ? '💀' : '—' }}</span>
-              </div>
+        <!-- Cột 3: Deck / Discard (Phải) -->
+        <div class="grid-col right-col">
+          <div class="deck-discard-zone enemy-deck-discard">
+            <div class="deck-slot">
+              <div class="slot-box">DECK</div>
+            </div>
+            <div class="discard-slot">
+              <div class="slot-box">DISCARD</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Cột 3: Deck / Discard (Phải) -->
-      <div class="grid-col right-col">
-        <div class="deck-discard-zone enemy-deck-discard">
-          <div class="deck-slot">
-            <div class="slot-box">DECK</div>
-          </div>
-          <div class="discard-slot">
-            <div class="slot-box">DISCARD</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ───────── CENTER DIVIDER ───────── -->
-    <div class="center-divider">
-      <div class="alive-counts">
-        <span class="enemy-count">👾 ĐỐI THỦ: {{ enemyAliveCount }} Pokémon</span>
-        <div class="divider-dot"></div>
-        <span class="player-count">👤 BẠN: {{ playerAliveCount }} Pokémon</span>
-      </div>
-    </div>
-
-    <!-- ───────── PLAYER SIDE (bottom, red) ───────── -->
-    <div class="side player-side">
-      <!-- Cột 1: Prize Cards (Trái) -->
-      <div class="grid-col left-col">
-        <div class="prize-zone player-prize">
-          <div class="zone-label">PRIZE<br>CARDS</div>
-          <div class="prize-slots">
-            <div
-              v-for="i in 6"
-              :key="'pp-' + i"
-              class="prize-card"
-              :class="{ won: i <= playerPrizesWon }"
-            >
-              <span v-if="i <= playerPrizesWon">⭐</span>
-              <span v-else>?</span>
-            </div>
-          </div>
+      <!-- ───────── CENTER DIVIDER ───────── -->
+      <div class="center-divider">
+        <div class="alive-counts">
+          <span class="enemy-count">👾 ĐỐI THỦ: {{ enemyAliveCount }} Pokémon</span>
+          <div class="divider-dot"></div>
+          <span class="player-count">👤 BẠN: {{ playerAliveCount }} Pokémon</span>
         </div>
       </div>
 
-      <!-- Cột 2: Combat Area (Giữa) -->
-      <div class="grid-col center-col">
-        <!-- Player Active (Hàng trên, sát vạch kẻ ngang) -->
-        <div class="active-row">
-          <div class="active-zone player-active">
-            <div class="zone-label">ACTIVE</div>
-            <div
-              class="active-card"
-              :class="{ 'knocked-out': playerActive?.isKnockedOut }"
-              @contextmenu.prevent="playerActive && !playerActive.isKnockedOut && onCardRightClick(playerActive)"
-            >
-              <template v-if="playerActive && !playerActive.isKnockedOut">
-                <PokemonCard3D
-                  :card="playerActive.rawCardData ?? playerActive"
-                  :width="cardWidth(true)"
-                  :disable-tilt="true"
-                  :is-hit="playerActive.isHit"
-                />
-                <div class="hp-bar-container">
-                  <div class="hp-bar-track">
-                    <div
-                      class="hp-bar-fill"
-                      :style="{ width: hpPercent(playerActive) + '%', background: hpColor(playerActive) }"
-                    ></div>
-                  </div>
-                  <span class="hp-label">{{ playerActive.currentHp }}/{{ playerActive.hp }}</span>
-                </div>
-                <div class="card-name-label">{{ playerActive.name }}</div>
-                <div v-if="playerActive.attachedEnergies.length > 0" class="energy-badges">
-                  <EnergyIcon v-for="(e,ei) in playerActive.attachedEnergies" :key="ei" :type="e" size="sm" class="energy-badge" />
-                </div>
-              </template>
-              <div v-else class="slot-ghost">
-                <span>{{ playerActive?.isKnockedOut ? '💀' : '—' }}</span>
-              </div>
-            </div>
-          </div>
-          <div class="stadium-label">STADIUM</div>
-        </div>
-
-        <!-- Player Bench (Hàng dưới cùng) -->
-        <div class="side-row bench-row">
-          <div class="bench-zone">
-            <div class="zone-label">
-              BENCH
-              <span class="bench-hint" v-if="canAct">(click → rút lui)</span>
-            </div>
-            <div class="bench-cards">
+      <!-- ───────── PLAYER SIDE (bottom, red) ───────── -->
+      <div class="side player-side">
+        <!-- Cột 1: Prize Cards (Trái) -->
+        <div class="grid-col left-col">
+          <div class="prize-zone player-prize">
+            <div class="zone-label">PRIZE<br>CARDS</div>
+            <div class="prize-slots">
               <div
-                v-for="(card, idx) in playerBench"
-                :key="'pb-' + idx"
-                class="bench-slot player-bench-slot"
-                :class="{
-                  'has-card': !!card,
-                  'knocked-out': card?.isKnockedOut,
-                  'can-retreat': canAct && card && !card.isKnockedOut,
-                }"
-                @click="card && !card.isKnockedOut && onPlayerBenchClick(card, idx)"
-                @contextmenu.prevent="card && !card.isKnockedOut && onCardRightClick(card)"
+                v-for="i in 6"
+                :key="'pp-' + i"
+                class="prize-card"
+                :class="{ won: i <= playerPrizesWon }"
               >
-                <template v-if="card && !card.isKnockedOut">
+                <span v-if="i <= playerPrizesWon">⭐</span>
+                <span v-else>?</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cột 2: Combat Area (Giữa) -->
+        <div class="grid-col center-col">
+          <!-- Player Active (Hàng trên, sát vạch kẻ ngang) -->
+          <div class="active-row">
+            <div class="active-zone player-active">
+              <div class="zone-label">ACTIVE</div>
+              <div
+                class="active-card"
+                :class="{ 'knocked-out': playerActive?.isKnockedOut }"
+                @contextmenu.prevent="playerActive && !playerActive.isKnockedOut && onCardRightClick(playerActive)"
+              >
+                <template v-if="playerActive && !playerActive.isKnockedOut">
                   <PokemonCard3D
-                    :card="card.rawCardData ?? card"
-                    :width="cardWidth(false)"
+                    :card="playerActive.rawCardData ?? playerActive"
+                    :width="cardWidth(true)"
                     :disable-tilt="true"
-                    :is-hit="card.isHit"
+                    :is-hit="playerActive.isHit"
                   />
-                  <div class="mini-hp-bar">
-                    <div class="mini-hp-fill"
-                      :style="{ width: hpPercent(card) + '%', background: hpColor(card) }">
+                  <div class="hp-bar-container">
+                    <div class="hp-bar-track">
+                      <div
+                        class="hp-bar-fill"
+                        :style="{ width: hpPercent(playerActive) + '%', background: hpColor(playerActive) }"
+                      ></div>
                     </div>
+                    <span class="hp-label">{{ playerActive.currentHp }}/{{ playerActive.hp }}</span>
                   </div>
-                  <div class="retreat-overlay" v-if="canAct">
-                    <span>🔄 Rút lui</span>
+                  <div class="card-name-label">{{ playerActive.name }}</div>
+                  <div v-if="playerActive.attachedEnergies.length > 0" class="energy-badges">
+                    <EnergyIcon v-for="(e,ei) in playerActive.attachedEnergies" :key="ei" :type="e" size="sm" class="energy-badge" />
                   </div>
                 </template>
-                <div v-else class="slot-ghost player-ghost">
-                  <span>{{ card?.isKnockedOut ? '💀' : '' }}</span>
+                <div v-else class="slot-ghost">
+                  <span>{{ playerActive?.isKnockedOut ? '💀' : '—' }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="stadium-label">STADIUM</div>
+          </div>
+
+          <!-- Player Bench (Hàng dưới cùng) -->
+          <div class="side-row bench-row">
+            <div class="bench-zone">
+              <div class="zone-label">
+                BENCH
+                <span class="bench-hint" v-if="canAct">(click → rút lui)</span>
+              </div>
+              <div class="bench-cards">
+                <div
+                  v-for="(card, idx) in playerBench"
+                  :key="'pb-' + idx"
+                  class="bench-slot player-bench-slot"
+                  :class="{
+                    'has-card': !!card,
+                    'knocked-out': card?.isKnockedOut,
+                    'can-retreat': canAct && card && !card.isKnockedOut,
+                  }"
+                  @click="card && !card.isKnockedOut && onPlayerBenchClick(card, idx)"
+                  @contextmenu.prevent="card && !card.isKnockedOut && onCardRightClick(card)"
+                >
+                  <template v-if="card && !card.isKnockedOut">
+                    <PokemonCard3D
+                      :card="card.rawCardData ?? card"
+                      :width="cardWidth(false)"
+                      :disable-tilt="true"
+                      :is-hit="card.isHit"
+                    />
+                    <div class="mini-hp-bar">
+                      <div class="mini-hp-fill"
+                        :style="{ width: hpPercent(card) + '%', background: hpColor(card) }">
+                      </div>
+                    </div>
+                    <div class="retreat-overlay" v-if="canAct">
+                      <span>🔄 Rút lui</span>
+                    </div>
+                  </template>
+                  <div v-else class="slot-ghost player-ghost">
+                    <span>{{ card?.isKnockedOut ? '💀' : '' }}</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Cột 3: Deck / Discard (Phải) -->
-      <div class="grid-col right-col">
-        <div class="deck-discard-zone player-deck-discard">
-          <div class="deck-slot">
-            <div class="slot-box player-slot-box">DECK</div>
-          </div>
-          <div class="discard-slot">
-            <div class="slot-box player-slot-box">DISCARD</div>
+        <!-- Cột 3: Deck / Discard (Phải) -->
+        <div class="grid-col right-col">
+          <div class="deck-discard-zone player-deck-discard">
+            <div class="deck-slot">
+              <div class="slot-box player-slot-box">DECK</div>
+            </div>
+            <div class="discard-slot">
+              <div class="slot-box player-slot-box">DISCARD</div>
+            </div>
           </div>
         </div>
       </div>
@@ -340,10 +384,26 @@ const enemyPrizesWon = computed(() =>
 .battlefield {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   height: 100%;
+  width: 100%;
   overflow: hidden;
   user-select: none;
-  position: relative; /* Thêm để chứa absolute background */
+  position: relative;
+  background: rgba(0,0,0,0.2);
+}
+
+.field-scaler {
+  width: 1100px;
+  height: 860px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease-out;
+  transform-origin: center center;
 }
 
 /* ─── Sides ─── */

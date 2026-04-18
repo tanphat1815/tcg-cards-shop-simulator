@@ -211,7 +211,7 @@ const handleImageError = (id: string) => {
                 <div 
                   v-for="item in group" 
                   :key="item.id"
-                  class="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200 relative group flex flex-col transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
+                  class="bg-white rounded-xl overflow-hidden shadow-sm border border-slate-200 relative group flex flex-col transition-all duration-300 hover:shadow-xl"
                 >
                   <!-- Lock Overlay -->
                   <div v-if="statsStore.level < item.requiredLevel" class="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center pointer-events-none">
