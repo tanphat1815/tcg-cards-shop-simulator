@@ -22,7 +22,7 @@ const cardDetailStore = useCardDetailStore()
 const selectedMode = ref<BattleMode>('BASIC')
 const binderCards = ref<any[]>([])
 const isLoading = ref(true)
-const gridCols = ref(5) // Default 5 columns, adjustable via zoom
+const gridCols = ref(8) // Default 8 columns, adjustable via zoom
 
 onMounted(async () => {
   isLoading.value = true

@@ -8,6 +8,7 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBattleStore } from '../store/battleStore'
 import { BattleLogic } from '../managers/BattleLogic'
+import EnergyIcon from '../../shared/components/EnergyIcon.vue'
 
 const store = useBattleStore()
 const {
@@ -23,11 +24,6 @@ const {
 const attacks = computed(() => playerActive.value?.attacks ?? [])
 
 const ENERGY_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Fairy', 'Colorless']
-const ENERGY_EMOJI: Record<string, string> = {
-  Fire: '🔥', Water: '💧', Grass: '🌿', Lightning: '⚡',
-  Psychic: '🔮', Fighting: '👊', Darkness: '🌑', Metal: '⚙️',
-  Dragon: '🐉', Fairy: '✨', Colorless: '⚪'
-}
 
 function selectAttack(idx: number) {
   if (!canAct.value) return
@@ -90,7 +86,7 @@ const hpColor = computed(() => BattleLogic.getHpColor(hpPercent.value))
             :title="e"
             @click="attachEnergy(e)"
           >
-            {{ ENERGY_EMOJI[e] }}
+            <EnergyIcon :type="e" size="md" />
           </button>
         </div>
       </div>
@@ -116,7 +112,10 @@ const hpColor = computed(() => BattleLogic.getHpColor(hpPercent.value))
               <span class="atk-dmg">{{ atk.damage }} DMG</span>
             </div>
             <div class="atk-cost">
-              {{ BattleLogic.formatEnergyCost(atk.cost) }}
+              <template v-if="atk.cost.length > 0">
+                <EnergyIcon v-for="(c, ci) in atk.cost" :key="ci" :type="c" size="sm" />
+              </template>
+              <span v-else class="free-atk">Miễn phí</span>
             </div>
             <div v-if="atk.text" class="atk-text">{{ atk.text }}</div>
           </button>
@@ -283,7 +282,8 @@ const hpColor = computed(() => BattleLogic.getHpColor(hpPercent.value))
 
 .atk-name { font-size: 13px; font-weight: 600; }
 .atk-dmg  { font-size: 13px; font-weight: 700; color: #f87171; }
-.atk-cost { font-size: 14px; }
+.atk-cost { display: flex; gap: 3px; margin: 4px 0; min-height: 18px; align-items: center; }
+.free-atk { font-size: 11px; color: #10b981; font-weight: 700; }
 .atk-text { font-size: 11px; color: #64748b; margin-top: 3px; line-height: 1.4; }
 
 .no-attacks { font-size: 12px; color: #475569; font-style: italic; padding: 8px 0; }
