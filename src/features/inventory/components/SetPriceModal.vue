@@ -42,7 +42,7 @@ function setMarket() {
 }
 function adjustPct(pct: number) {
   if (!target.value) return
-  customPrice.value = parseFloat((target.value.marketPrice * (1 + pct / 100)).toFixed(2))
+  customPrice.value = parseFloat((customPrice.value * (1 + pct / 100)).toFixed(2))
 }
 function roundPrice() {
   customPrice.value = Math.round(customPrice.value * 10) / 10

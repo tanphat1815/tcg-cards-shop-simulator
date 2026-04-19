@@ -77,20 +77,9 @@ const handleTierClick = (tierIndex: number, event: MouseEvent) => {
     // Đánh dấu để Phaser xóa thùng hàng vật lý
     deliveryStore.consumeCarriedBox()
     
-    // Mở popup định giá (chỉ cho kệ bán)
-    if (shelf.role !== 'storage') {
-      deliveryStore.openSetPrice({
-        shelfId: shelf.id,
-        tierIndex: tierIndex,
-        itemId: carried.itemId,
-        name: carried.name,
-        imageUrl: carried.type === 'pack'
-          ? getPackVisuals(carried.sourceSetId ?? carried.itemId).front
-          : getBoxVisuals(carried.sourceSetId ?? carried.itemId).front,
-        currentPrice: shopItem?.sellPrice ?? 0,
-        marketPrice: shopItem?.sellPrice ?? 0,
-        buyPrice: (carried as any).buyPrice ?? shopItem?.buyPrice ?? 0,
-      })
+    // Mở popup định giá (chỉ cho kệ bán và CHỈ KHI chưa có giá đã set)
+    if (shelf.role !== 'storage' && (shopItem?.sellPrice || 0) <= 0) {
+      openPriceEditor(carried.itemId, tierIndex)
     }
     
     // Reset lựa chọn sau khi xếp xong
@@ -106,26 +95,45 @@ const handleTierClick = (tierIndex: number, event: MouseEvent) => {
     gameStore.moveToTierSlot(selectedItemId.value, tierIndex)
   }
 
-  // Trigger SetPriceModal (chỉ cho kệ bán)
-  if (shopItem && shelf && shelf.role !== 'storage') {
-    deliveryStore.openSetPrice({
-      shelfId: shelf.id,
-      tierIndex: tierIndex,
-      itemId: selectedItemId.value,
-      name: shopItem.name,
-      imageUrl: shopItem.type === 'pack'
-        ? getPackVisuals(shopItem.sourceSetId ?? selectedItemId.value).front
-        : getBoxVisuals(shopItem.sourceSetId ?? selectedItemId.value).front,
-      currentPrice: shopItem.sellPrice,
-      marketPrice: shopItem.sellPrice,
-      buyPrice: shopItem.buyPrice,
-    })
+  // Trigger SetPriceModal (chỉ cho kệ bán và CHỈ KHI chưa có giá đã set)
+  if (shopItem && shelf && shelf.role !== 'storage' && (shopItem.sellPrice || 0) <= 0) {
+    openPriceEditor(selectedItemId.value, tierIndex)
   }
 
   // Hết hàng trong kho thì bỏ chọn
   if (!inventoryStore.shopInventory[selectedItemId.value]) {
     selectedItemId.value = null
   }
+}
+
+/**
+ * Mở modal định giá cho một item cụ thể trên tầng.
+ */
+const openPriceEditor = (itemId: string, tierIndex: number) => {
+  const shelf = activeShelf.value
+  if (!shelf) return
+
+  const shopItem = inventoryStore.shopItems[itemId]
+  if (!shopItem) return
+
+  deliveryStore.openSetPrice({
+    shelfId: shelf.id,
+    tierIndex: tierIndex,
+    itemId: itemId,
+    name: shopItem.name,
+    imageUrl: shopItem.type === 'pack'
+      ? getPackVisuals(shopItem.sourceSetId ?? itemId).front
+      : getBoxVisuals(shopItem.sourceSetId ?? itemId).front,
+    currentPrice: shopItem.sellPrice,
+    marketPrice: shopItem.sellPrice || shopItem.buyPrice * 1.6, // Fallback if no price set
+    buyPrice: shopItem.buyPrice,
+  })
+}
+
+const handleTierRightClick = (tierIndex: number) => {
+  const shelfId = gameStore.activeShelfId
+  if (!shelfId) return
+  gameStore.takeItemFromTier(shelfId, tierIndex)
 }
 
 const clearTier = (tierIndex: number) => {
@@ -266,7 +274,7 @@ const tierFillPct = (tierIndex: number): number => {
         <div class="flex-grow p-6 flex flex-col gap-4 overflow-y-auto custom-scroll bg-gray-950/30">
           <div class="flex justify-between items-center shrink-0">
              <p class="text-[11px] text-gray-400 italic">
-              Thao tác: Chọn hàng bên trái → Click vào Tầng để đặt.
+              Thao tác: Click để Đặt hàng | Chuột phải để Lấy hàng | Click vào Giá để đổi giá.
             </p>
             <div v-if="selectedItemId" class="flex items-center gap-2 bg-indigo-500/20 px-3 py-1 rounded-full border border-indigo-500/30">
                <span class="text-[10px] font-bold text-indigo-300 uppercase">Đang chọn:</span>
@@ -289,8 +297,9 @@ const tierFillPct = (tierIndex: number): number => {
           >
             <!-- Tier Header -->
             <div
-              class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 cursor-pointer group"
+              class="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 cursor-pointer group select-none"
               @click="handleTierClick(tierIdx, $event)"
+              @contextmenu.prevent="handleTierRightClick(tierIdx)"
             >
               <div class="flex items-center gap-3">
                 <span class="text-xs font-black text-gray-500 uppercase tracking-widest">Tầng {{ tierIdx + 1 }}</span>
@@ -302,27 +311,45 @@ const tierFillPct = (tierIndex: number): number => {
                   </div>
                   <div class="flex items-center gap-2">
                     <span class="text-[10px] font-mono text-gray-400">{{ tier.slots.length }}/{{ tier.maxSlots }}</span>
-                    <div class="w-24 h-1.5 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
+                    <div class="w-20 h-1.5 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
                       <div class="h-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)] transition-all duration-500" :style="{ width: `${tierFillPct(tierIdx)}%` }"></div>
                     </div>
+                  </div>
+
+                  <!-- Hiển thị giá và cho phép sửa nhanh (chỉ kệ bán) -->
+                  <div
+                    v-if="activeShelf.role !== 'storage'"
+                    @click.stop="openPriceEditor(tier.itemId, tierIdx)"
+                    class="flex items-center gap-2 bg-gray-950 px-2.5 py-1 rounded-lg border border-emerald-500/30 
+                           hover:bg-emerald-900/20 hover:border-emerald-500 transition-all cursor-pointer group/price"
+                    title="Click để đổi giá"
+                  >
+                    <span class="text-[10px] text-gray-500 font-bold uppercase">Giá:</span>
+                    <span class="text-xs font-black text-emerald-400 font-mono">
+                      ${{ inventoryStore.shopItems[tier.itemId]?.sellPrice?.toFixed(2) || '0.00' }}
+                    </span>
+                    <span class="text-[10px] opacity-0 group-hover/price:opacity-100 transition-opacity">✏️</span>
                   </div>
                 </div>
                 <span v-else class="text-xs text-gray-600 font-medium italic">[ Trống – Click để đặt hàng tại đây ]</span>
               </div>
 
-              <div class="flex items-center gap-2">
-                <span v-if="selectedItemId && canPlaceInTier(tierIdx)" class="text-[10px] text-indigo-400 font-black uppercase tracking-widest animate-pulse">
-                  Đặt vào đây
-                </span>
-                <EnhancedButton
-                  v-if="tier.itemId"
-                  variant="danger"
-                  size="xs"
-                  @click.stop="clearTier(tierIdx)"
-                >
-                  Dọn tầng
-                </EnhancedButton>
-              </div>
+                <div class="flex items-center gap-3">
+                  <span v-if="selectedItemId && canPlaceInTier(tierIdx)" class="text-[10px] text-indigo-400 font-black uppercase tracking-widest animate-pulse">
+                    Click: Đặt hàng
+                  </span>
+                  <span v-if="tier.itemId" class="text-[10px] text-gray-500 font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+                    Chuột phải: Lấy hàng
+                  </span>
+                  <EnhancedButton
+                    v-if="tier.itemId"
+                    variant="danger"
+                    size="xs"
+                    @click.stop="clearTier(tierIdx)"
+                  >
+                    Dọn tầng
+                  </EnhancedButton>
+                </div>
             </div>
 
             <!-- Tier Content Visuals -->

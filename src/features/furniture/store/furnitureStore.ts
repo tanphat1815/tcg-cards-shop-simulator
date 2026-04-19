@@ -212,6 +212,31 @@ export const useFurnitureStore = defineStore('furniture', {
     },
 
     /**
+     * Lấy 1 món đồ từ kệ trả về kho hàng.
+     */
+    takeItemFromTier(shelfId: string, tierIndex: number) {
+      const inventoryStore = useInventoryStore()
+      const shelf = this.placedShelves[shelfId]
+      if (!shelf) return
+
+      const tier = shelf.tiers[tierIndex]
+      if (!tier.itemId || tier.slots.length === 0) return
+
+      const itemId = tier.itemId
+      tier.slots.pop()
+
+      // Trả lại vào kho
+      if (!inventoryStore.shopInventory[itemId]) inventoryStore.shopInventory[itemId] = 0
+      inventoryStore.shopInventory[itemId]++
+
+      // Nếu tầng trống hẳn thì xóa luôn itemId
+      if (tier.slots.length === 0) {
+        tier.itemId = null
+        tier.maxSlots = 0
+      }
+    },
+
+    /**
      * Logic NPC lấy sản phẩm.
      * NPCs chỉ mua từ kệ bán hàng (selling).
      */

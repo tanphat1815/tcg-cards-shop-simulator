@@ -22,28 +22,51 @@ export class DeliveryManager {
   private scene: Phaser.Scene
   private boxes: LiveBox[] = []
   private boxGroup!: Phaser.Physics.Arcade.Group
+  /** Nhóm vật lý tĩnh cho bãi nhận hàng ngoài Shop */
+  private deliveryZoneGroup!: Phaser.Physics.Arcade.StaticGroup
   private environmentManager: EnvironmentManager
   private lastSpawnTime = 0
   private spawnInterval = 800
   private keyF!: Phaser.Input.Keyboard.Key
   private hintText!: Phaser.GameObjects.Text
 
-  private static readonly WARP_GATE_EXCLUSION_RADIUS = 150
 
   constructor(scene: Phaser.Scene, environmentManager: EnvironmentManager) {
     this.scene = scene
     this.environmentManager = environmentManager
     this.keyF = scene.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F)
     
+    // 1. Khởi tạo Box Group (Vật thể động)
     this.boxGroup = this.scene.physics.add.group({
       bounceX: 0.3,
       bounceY: 0.3,
       collideWorldBounds: true
     })
 
+    // 2. Khởi tạo Delivery Zone (Vật thể tĩnh)
+    this.deliveryZoneGroup = this.scene.physics.add.staticGroup()
+    
+    // Tính toán vị trí bãi nhận hàng dựa trên vị trí cửa
+    const doorPos = this.environmentManager.getDoorLocation()
+    
+    // Tạo mặt sàn bãi nhận hàng (Màu xám đường nhựa)
+    const zoneRect = this.scene.add.rectangle(doorPos.x, doorPos.y + 120, 300, 40, 0x333333)
+    zoneRect.setDepth(DEPTH.FURNITURE - 1)
+    this.deliveryZoneGroup.add(zoneRect)
+    
+    // Vẽ Text tiêu đề trên mặt sàn
+    this.scene.add.text(doorPos.x, doorPos.y + 110, "BÃI NHẬN HÀNG", {
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#aaaaaa'
+    }).setOrigin(0.5).setDepth(DEPTH.FURNITURE)
+
+    // 3. Thiết lập va chạm
     this.scene.physics.add.collider(this.boxGroup, this.boxGroup)
     this.scene.physics.add.collider(this.boxGroup, this.environmentManager.wallsGroup)
+    this.scene.physics.add.collider(this.boxGroup, this.deliveryZoneGroup)
 
+    // UI Hint Text
     this.hintText = this.scene.add.text(0, 0, '', {
       fontSize: '13px',
       color: '#ffffff',
@@ -69,16 +92,14 @@ export class DeliveryManager {
   }
 
   /**
-   * Đồng bộ với Vue: Nếu Pinia đánh dấu thùng hàng đã được tiêu thụ (xếp lên kệ bán),
-   * thì xóa sprite vật lý của thùng hàng đó.
+   * Đồng bộ với Vue: Nếu Pinia đánh dấu thùng hàng đã được tiêu thụ, thì xóa sprite.
    */
   private checkCarriedBoxConsumed() {
     const deliveryStore = useDeliveryStore()
     if (deliveryStore.isCarriedBoxConsumed) {
-      console.log("[DeliveryManager] Carried box consumed by UI. Removing physical entity.")
       this.removeCarriedBox()
       deliveryStore.dropBox()
-      deliveryStore.isCarriedBoxConsumed = false // Reset flag
+      deliveryStore.isCarriedBoxConsumed = false
     }
   }
 
@@ -96,16 +117,10 @@ export class DeliveryManager {
 
   private spawnBox(item: { itemId: string; name: string; type: string; quantity: number }) {
     const doorPos = this.environmentManager.getDoorLocation()
-    const warpX = doorPos.x
-    const warpY = doorPos.y + 150
-
-    let spawnX = doorPos.x + Phaser.Math.Between(-80, 80)
-    let spawnY = doorPos.y - 50
-
-    const distToWarp = Phaser.Math.Distance.Between(spawnX, spawnY, warpX, warpY)
-    if (distToWarp < DeliveryManager.WARP_GATE_EXCLUSION_RADIUS) {
-      spawnX = doorPos.x - 120
-    }
+    
+    // Spawn dao động quanh cửa, nhưng rớt bên ngoài (Y > doorPos.y)
+    let spawnX = doorPos.x + Phaser.Math.Between(-100, 100)
+    let spawnY = doorPos.y + 20 // Spawn ở phía trên bãi nhận hàng một chút để rớt xuống
 
     const boxRect = this.scene.add.rectangle(spawnX, spawnY, 48, 36, 0x8B4513) as any
     boxRect.setStrokeStyle(2, 0x5D2906)
@@ -115,9 +130,9 @@ export class DeliveryManager {
     this.boxGroup.add(boxRect)
     
     const body = boxRect.body as Phaser.Physics.Arcade.Body
-    body.setGravityY(400)
+    body.setGravityY(500) // Tăng trọng lực để rớt thật hơn
     body.setBounce(0.3)
-    body.setVelocityY(-100)
+    body.setVelocityY(50) // Rớt xuống
     body.setCollideWorldBounds(true)
 
     const label = this.scene.add.text(spawnX, spawnY - 22, item.name.substring(0, 20), {
@@ -247,9 +262,6 @@ export class DeliveryManager {
     deliveryStore.dropBox()
   }
 
-  /**
-   * Xử lý tương tác với kệ khi đang cầm thùng hàng.
-   */
   handleShelfInteraction(shelfId: string): boolean {
     const deliveryStore = useDeliveryStore()
     if (!deliveryStore.carriedBox) return false
@@ -262,18 +274,9 @@ export class DeliveryManager {
     const shelfRole = shelf.role ?? 'selling'
 
     if (shelfRole === 'selling') {
-      /**
-       * LUỒNG MỚI (Dành cho Kệ Bán):
-       * Chỉ mở Menu, người dùng sẽ tự chọn tầng trong UI. 
-       * Thùng hàng KHÔNG biến mất cho đến khi xếp xong trong UI.
-       */
       useUIStore().openShelfMenu(shelfId)
       return true
     } else {
-      /**
-       * LUỒNG KỆ KHO:
-       * Tự động đổ hàng vào kho inventory và biến mất thùng hàng.
-       */
       if (carried.type === 'furniture') {
         furnitureStore.startBuildMode(carried.itemId)
       } else {
@@ -309,6 +312,7 @@ export class DeliveryManager {
     })
     this.boxes = []
     this.boxGroup.clear(true, true)
+    this.deliveryZoneGroup.clear(true, true)
     this.hintText.destroy()
   }
 }
